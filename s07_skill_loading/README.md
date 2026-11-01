@@ -1,14 +1,24 @@
 # s07: Skill Loading — 用到时再加载
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「认知域 · 技能加载」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 s01 → s02 → s03 → s04 → s05 → s06 → `s07` → [s08](../s08_context_compact/) → s09 → ... → s16 → s17
 
 > system prompt 保存技能目录；`load_skill` 返回完整的 `SKILL.md`。
 >
 > **Harness 层**：知识加载 — 让模型先知道有哪些技能，再按名称读取内容。
+
+---
+
+## 本章要学会的判断
+
+- **它解决什么**：有好几套专门的操作规范时，先只给模型看目录，用到哪套再展开哪套。
+- **什么时候需要它**：规范一多，全塞进提示词太长，还会互相干扰。
+- **你要拍板的规则**：技能由谁写、谁审、多久更新；目录里的描述怎么写，模型才会在对的时候用上。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -19,9 +29,9 @@ s01 → s02 → s03 → s04 → s05 → s06 → `s07` → [s08](../s08_context_c
 ```python
 SYSTEM = (
     f"You are a coding agent. "
-    + open("docs/react-style.md").read()
-    + open("docs/sql-style.md").read()
-    + open("docs/api-design.md").read()
+    + open("guides/react-style.md").read()
+    + open("guides/sql-style.md").read()
+    + open("guides/api-design.md").read()
 )
 ```
 
@@ -95,7 +105,7 @@ class SkillLoader:
 def build_system_prompt() -> str:
     return (
         f"You are a coding agent at {WORKDIR}. Use tools to solve tasks. "
-        "Act, don't explain.\n\n"
+        "Act, don't explain. Always answer in Chinese.\n\n"
         f"Skills available:\n{SKILL_LOADER.catalog()}\n\n"
         "Use load_skill to read the full instructions when a skill applies."
     )
@@ -121,9 +131,73 @@ def load(self, name: str) -> str:
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s07_skill_loading/code.py
 ```
+
+试试这些 prompt：
+
+1. `What skills are available?`
+2. `Load the code-review skill and follow its instructions`
+3. `Review README.md and load the relevant skill first`
+
+观察 system prompt 中是否只有技能目录，以及调用 `load_skill` 后是否出现完整的 `SKILL.md` 内容。
+
+---
+
+## 产品经理视角
+
+> 技能是把公司的做事规范打包成说明书，Agent 用到时才翻开。这是产品经理和业务专家最容易直接参与的组件：不用写代码，写好文档就行。
+
+### 什么信号说明需要它
+
+- 有好几套专门的规范：报销流程、合同审查口径、品牌文案要求。
+- 全部塞进提示词太长，规范之间互相干扰，费用也上去了。
+- 业务方经常要改规范，希望不用等工程师发版。
+
+### 代价
+
+- **可能用不上**：模型可能想不起来去翻说明书；目录里的简介写得不好，该用的时候用不上。
+- **可能互相矛盾**：技能多了，彼此之间可能冲突。
+- **要有人维护**：过期的规范比没有规范更危险。
+
+### 先试试更便宜的办法
+
+- 只有一两套规范：直接写进提示词。
+
+### 你要拍板的规则
+
+| 规则 | 示例 |
+|---|---|
+| 谁写、谁审 | 业务负责人写，产品经理审格式，法务审合规相关的内容 |
+| 多久更新 | 每季度复查一次；制度变了当天更新 |
+| 目录里的简介怎么写 | 写清「什么情况下用这一份」，而不是只写个标题 |
+| 冲突以谁为准 | 定好优先级，比如法务规范优先于文案风格 |
+
+### 怎么衡量
+
+- 该用技能的时候，实际用上的比例（抽查）。
+- 用上技能后，回答符合规范的比例。
+- 加载技能前后的费用变化。
+
+### 真实产品里的样子
+
+- Anthropic 在 2025 年推出了 Agent Skills。每个技能是一个文件夹，核心是一份 SKILL.md 说明。Claude 平时只看到技能的名字和简介，需要时才读全文，和本章的机制一样。
+- 这个格式后来公开成开放规范，其他厂商的工具也陆续支持。业务方写好的一份技能，可以在不同工具里复用。
+
+### 面试题
+
+**「公司有几十份操作规范，怎么让 Agent 遵守？」**
+
+答题要点：
+
+- 不要全塞进提示词。
+- 做成技能，按需加载；目录简介要写清适用场景。
+- 由业务负责人维护，定期复查。
+- 规范之间冲突时，定好优先级。
+- 用使用率和合规率衡量效果。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
@@ -132,5 +206,7 @@ python s07_skill_loading/code.py
 随着工具调用增加，`messages[]` 会积累较早的文件内容和工具结果。
 
 s08 Context Compact → 缩短较早的消息，为后续调用保留上下文空间。
+
+---
 
 > 运行方式：在仓库根目录执行 `python s07_skill_loading/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

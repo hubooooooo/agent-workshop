@@ -1,14 +1,24 @@
 # s10: Task System — 从执行清单到可协调的任务状态
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「协作域 · 任务系统」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 s01 → ... → s08 → s09 → `s10` → [s11](../s11_background_tasks/) → s12 → ... → s16 → s17
 
 > *"大目标拆成小任务, 排好序, 持久化"* — 文件持久化的任务图, 多 agent 协作的基础。
 >
 > **Harness 层**: 任务 — 持久化的目标, 可恢复的进度。
+
+---
+
+## 本章要学会的判断
+
+- **它解决什么**：把大目标拆成有先后顺序的任务，存下来，跨会话、跨人继续推进。
+- **什么时候需要它**：一个目标要分很多步、做好几天、多人接力，还要能看进度。
+- **你要拍板的规则**：任务拆多细；谁能建、认领、关闭任务；卡住多久升级给人。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -28,7 +38,7 @@ TodoWrite 没有记录这些依赖和分工。它可以显示“编写 API”仍
 
 ![Task System Overview](images/task-system-overview.svg)
 
-代码保留 S04 的五个基础工具、Permission、Hooks 和统一 `execute_tool`，再加入 5 个任务工具、`.tasks/` 目录持久化和 `blockedBy` 依赖检查。
+代码保留 S04 的五个基础工具、Permission、Hooks 和统一 `execute_tool`，再加入 6 个任务工具、`.tasks/` 目录持久化和 `blockedBy` 依赖检查。
 
 TodoWrite vs Task System：
 
@@ -71,12 +81,22 @@ ID 使用 `task_` 加 8 位随机十六进制字符生成。创建文件时使�
 ### create_task: 创建任务
 
 ```python
-def create_task(subject: str, description: str = "",
-                blockedBy: list[str] | None = None) -> Task:
-    return TASKS.create(subject, description, blockedBy)
+def create_task(subject: str, description: str = "") -> Task:
+    return TASKS.create(subject, description)
 ```
 
-`TaskStore.create` 检查 subject 和依赖 ID，再把任务写入 `.tasks/{id}.json`。`blockedBy` 声明依赖，比如“写 API”的 `blockedBy` 可以指向数据库任务的 ID。
+`TaskStore.create` 检查 subject，分配随机 ID，再把任务写入 `.tasks/{id}.json`。新任务的 `blockedBy` 固定为空，工具结果会把运行时生成的 ID 返回给模型。
+
+### update_task: 使用返回的 ID 添加依赖
+
+```python
+def update_task(task_id: str, addBlockedBy: list[str]) -> Task:
+    return TASKS.update_dependencies(task_id, addBlockedBy)
+```
+
+任务图采用两阶段构建：先创建所有节点，再使用 `create_task` 返回的 ID 调用 `update_task` 添加边。模型可能在一条回复里同时发出多个工具调用，而这些同级调用在任何工具结果产生前就已经确定，因此某个 `create_task` 无法直接使用另一个调用刚生成的 ID。
+
+`update_task` 会先校验整次修改，再统一保存。目标任务和依赖必须存在，目标必须仍为 pending 且无人认领，并且不能形成自依赖或环。重复添加已有依赖是安全的，不会产生重复边。
 
 ### can_start: 依赖检查
 
@@ -161,11 +181,16 @@ pending ──claim──→ in_progress ──complete──→ completed
 ### 合起来跑
 
 ```python
-# 创建有依赖的任务
+# 第一阶段：创建所有节点并取得运行时 ID
 schema = create_task("setup database schema")
-endpoints = create_task("create API endpoints", blockedBy=[schema.id])
-tests = create_task("write tests", blockedBy=[endpoints.id])
-docs = create_task("write docs", blockedBy=[schema.id])
+endpoints = create_task("create API endpoints")
+tests = create_task("write tests")
+docs = create_task("write docs")
+
+# 第二阶段：使用返回的 ID 建立依赖边
+update_task(endpoints.id, addBlockedBy=[schema.id])
+update_task(tests.id, addBlockedBy=[endpoints.id])
+update_task(docs.id, addBlockedBy=[schema.id])
 
 # Agent 认领第一个可做的任务
 claim_task(schema.id)       # ✓ Claimed (无依赖)
@@ -181,16 +206,83 @@ claim_task(tests.id)        # ✓ Claimed (endpoints 已完成)
 complete_task(tests.id)     # ✓ Completed
 ```
 
-每个 `create_task` 写一个 JSON 文件，每个 `claim_task` / `complete_task` 更新文件。跨会话时，`.tasks/` 目录还在，Agent 读文件就能恢复进度。
+每个 `create_task` 写一个 JSON 文件，`update_task`、`claim_task` 和 `complete_task` 更新文件。跨会话时，`.tasks/` 目录还在，Agent 读文件就能恢复进度。
 
 ---
 
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s10_task_system/code.py
 ```
+
+试试这些 prompt：
+
+1. `Create tasks: setup database schema, create API endpoints (depends on schema), write tests (depends on endpoints), write docs (depends on schema)`
+2. `List all tasks and their statuses`
+3. `Claim the first unblocked task and complete it`
+4. `List tasks again — which ones are now unblocked?`
+
+观察重点：`.tasks/` 目录下是否生成了 JSON 文件？完成任务后，被阻塞的任务是否解锁？
+
+---
+
+## 产品经理视角
+
+> 待办清单（s05）是 Agent 记在自己脑子里的计划；任务板是挂在墙上的看板，有先后顺序、有负责人，跨会话、跨人都能接着推进。
+
+### 什么信号说明需要它
+
+- 一个目标要拆成多个有先后顺序的任务，比如先建好表，才能写接口。
+- 工作要跨天、跨会话推进，中途断了要能接上。
+- 多个 Agent 或多个人要分工，需要知道谁在做什么。
+- 需要给用户或管理者看整体进度。
+
+### 代价
+
+- **要维护状态**：要处理卡住的任务、没人认领的任务、已经过期的任务。
+- **拆得太细反而累**：管理任务的成本可能超过收益。
+- **几乎要自研**：现成方案很少自带（见选型篇的对照表）。
+
+### 先试试更便宜的办法
+
+- 待办清单（s05）够用，就不要上任务板。
+- 直接用团队已有的项目管理工具（Jira、飞书项目等），通过 MCP（s14）让 Agent 去读写里面的任务。
+
+### 你要拍板的规则
+
+| 规则 | 示例 |
+|---|---|
+| 任务拆多细 | 每个任务半天之内能完成 |
+| 谁能建、认领、关闭 | Agent 可以建任务、认领任务；关闭要等验证通过 |
+| 前后顺序 | 有前置任务的，前置任务完成之前不能开始 |
+| 卡住多久要上报 | 超过 1 天没有进展，通知负责人 |
+
+### 怎么衡量
+
+- 任务按时完成率。
+- 卡住的任务数量、平均卡了多久。
+- 中途断了以后，能不能顺利接着做。
+
+### 真实产品里的样子
+
+- Kiro 会先把需求拆成一份任务清单，每个任务都对应到某条需求，用户可以一个个让 Agent 去执行。
+- 很多团队不自建任务板，而是让 Agent 直接读写 Jira、Linear、飞书项目里的任务。
+
+### 面试题
+
+**「待办清单和任务板有什么区别？什么时候需要任务板？」**
+
+答题要点：
+
+- 区别一：待办清单只在一次会话里有效；任务板会保存下来，下次还在。
+- 区别二：待办清单只有「做没做完」；任务板还有前后顺序和负责人。
+- 区别三：待办清单是 Agent 自己用的；任务板是多方一起看、一起用的。
+- 需要任务板的情况：跨会话推进、多人或多个 Agent 协作、需要看整体进度。
+- 能接现有的项目管理工具，就不要自己造。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
@@ -199,5 +291,7 @@ python s10_task_system/code.py
 任务图有了，但全量测试、安装依赖和部署等命令可能需要很长时间。同步执行这些命令时，Agent Loop 会一直停在当前工具调用上，只有命令结束后才能继续处理其他工作。
 
 s11 Background Tasks → 把慢操作放到后台。Agent 可以继续处理其他任务，后台执行完成后再接收通知。
+
+---
 
 > 运行方式：在仓库根目录执行 `python s10_task_system/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

@@ -1,12 +1,22 @@
 # s14: MCP Tools — 发现并调用外部工具
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「行动域 · MCP 插件」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 [s04](../s04_hooks/) → `s14` → [s15](../s15_integrated_harness/) → s16 → s17
 
 > **Harness 层**：MCP Tools — 连接服务、发现工具，并把它们加入 Agent 的工具循环。
+
+---
+
+## 本章要学会的判断
+
+- **它解决什么**：用一套通用接口，把已有系统（CRM、工单、知识库）和第三方工具接进来。
+- **什么时候需要它**：要接好几个外部系统，希望接法统一。
+- **你要拍板的规则**：允许接哪些服务（白名单）；外部工具默认按什么权限处理；数据能不能流出公司。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -28,7 +38,7 @@ MCP 把这部分拆成两个角色：server 提供工具列表和调用入口，
 - `connect_mcp` 连接一个 server，并取得它的工具列表。
 - `assemble_tool_pool` 把基础工具与已经连接的 MCP 工具组装到同一个工具池。
 
-参考实现里的 `docs` 和 `deploy` 是进程内模拟 server，用来展示 `tools/list`、`tools/call` 和动态工具池。真实 MCP transport 不在本章实现。
+课程里的 `docs` 和 `deploy` 是进程内模拟 server，用来展示 `tools/list`、`tools/call` 和动态工具池。真实 MCP transport 不在本章实现。
 
 ---
 
@@ -72,7 +82,7 @@ class MCPClient:
             return f"MCP error: {type(error).__name__}: {error}"
 ```
 
-`register()` 对应参考实现里的工具发现结果，`call_tool()` 对应调用入口。错误会返回给模型，不会直接结束 Agent Loop。
+`register()` 对应课程里的工具发现结果，`call_tool()` 对应调用入口。错误会返回给模型，不会直接结束 Agent Loop。
 
 ### 3. connect_mcp 只负责连接和发现
 
@@ -152,7 +162,7 @@ MCP_HOST_POLICY = {
 MCP error: TypeError: <lambda>() missing 1 required argument: 'query'
 ```
 
-模型可以在下一轮修正参数，而不是让组件脚本直接退出。
+模型可以在下一轮修正参数，而不是让课程脚本直接退出。
 
 ---
 
@@ -174,14 +184,97 @@ MCP error: TypeError: <lambda>() missing 1 required argument: 'query'
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s14_mcp_plugin/code.py
 ```
+
+输入：
+
+```text
+连接 docs server，搜索 agent hooks，并告诉我当前文档 API 版本。
+```
+
+一次典型工具轨迹是：
+
+```text
+connect_mcp(name="docs")
+mcp__docs__search(query="agent hooks")
+mcp__docs__get_version()
+```
+
+再输入：
+
+```text
+连接 deploy server，查看 web 服务状态，不要触发部署。
+```
+
+`status` 会按宿主策略直接执行；`trigger` 需要用户确认。
+
+---
+
+## 产品经理视角
+
+> MCP 是 Agent 接外部系统的「通用插头」。接得越多，Agent 能做的越多；但每接一个，就是把一部分安全交到了别人手里。
+
+### 什么信号说明需要它
+
+- 要接公司已有的系统：客户管理系统、工单、知识库、日历。
+- 想用第三方现成的能力，不想每一个都自己做。
+- 希望以后换 Agent 方案时，已经接好的系统不用重做。
+
+### 代价
+
+- **第三方的安全风险**：服务可能被篡改，或者返回的内容里藏着诱导 Agent 的指令。
+- **数据会流出去**：数据会发到外部服务。
+- **工具变多，模型更难选对**：s02 的问题会被放大。
+- **跟着不稳定**：外部服务不稳定，Agent 也跟着不稳定。
+
+### 先试试更便宜的办法
+
+- 只接一两个系统：直接做成内置工具。
+
+### 你要拍板的规则
+
+| 规则 | 示例 |
+|---|---|
+| 允许接哪些服务 | 白名单，由安全团队审核；不允许用户随意添加 |
+| 默认按什么权限处理 | 外部工具一律先归入「先问人」；审核过的只读工具再放行 |
+| 数据能不能流出 | 客户数据不能发给公司以外的服务 |
+| 接多少 | 一个场景只接必需的，用不到的就断开 |
+
+### 怎么衡量
+
+- 外部工具的调用成功率和响应时间。
+- 接入变多以后，工具选错率有没有上升。
+- 安全事件的数量。
+
+### 真实产品里的样子
+
+- MCP 由 Anthropic 在 2024 年底提出，之后 OpenAI、Google、微软等相继宣布支持，已经成为行业通用标准。2025 年底，它被捐给了 Linux 基金会旗下新成立的基金会来管理。
+- Claude、ChatGPT、Cursor 都能接 MCP 服务；GitHub、Notion、飞书等也提供了官方的 MCP 服务。
+- 选型篇的对照表里，Coze 开源版还没有实现 MCP 调用。
+
+### 面试题
+
+**「Agent 要接公司的客户管理系统和工单系统，你关注什么？」**
+
+答题要点：
+
+- 方式：用 MCP，还是直接做成内置工具。
+- 权限：只读还是能写；写入操作要走 s03 的「先问人」。
+- 数据：哪些字段可以给模型看，要不要脱敏。
+- 管理：白名单和接入审核。
+- 稳定性：外部系统挂了，Agent 怎么回应用户。
+- 用调用成功率和安全事件数来衡量。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
 ## 接下来
 
-目前，MCP 还是一条独立的独立分支。s15 Integrated Harness 会把基础工具、Hooks、Skills、Context、Memory、Task、Background、Cron、Teams 和 MCP 放进同一个运行时。
+目前，MCP 还是一条独立的课程分支。s15 Integrated Harness 会把基础工具、Hooks、Skills、Context、Memory、Task、Background、Cron、Teams 和 MCP 放进同一个运行时。
+
+---
 
 > 运行方式：在仓库根目录执行 `python s14_mcp_plugin/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

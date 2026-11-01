@@ -1,14 +1,24 @@
 # s04: Hooks — 挂在循环上，不写进循环里
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「约束域 · 钩子系统」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 s01 → s02 → s03 → `s04` → [s05](../s05_todo_write/) → s06 → ... → s16 → s17
 
 > *"挂在循环上, 不写进循环里"* — hook 在工具执行前后注入扩展逻辑。
 >
 > **Harness 层**: hook — 扩展点不侵入循环。
+
+---
+
+## 本章要学会的判断
+
+- **它解决什么**：在工具执行前后留插口，统一加日志、合规检查、计费，不用每个工具各写一遍。
+- **什么时候需要它**：要统一做审计留痕、敏感词过滤、计费这类「每次都要做」的事。
+- **你要拍板的规则**：哪些时机必须留痕；哪些检查有权否决执行。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -86,7 +96,7 @@ def trigger_hooks(event: str, *args):
 ```python
 def context_inject_hook(query: str) -> str | None:
     """Inject current working directory info into every prompt."""
-    print(f"\033[90m[HOOK] UserPromptSubmit: working in {WORKDIR}\033[0m")
+    print(f"\033[90m[钩子] UserPromptSubmit：工作目录 {WORKDIR}\033[0m")
     return None   # return None = no modification, let prompt through
 
 register_hook("UserPromptSubmit", context_inject_hook)
@@ -109,23 +119,23 @@ def permission_hook(block):
     if block.name == "bash":
         for pattern in DENY_LIST:
             if pattern in block.input.get("command", ""):
-                return "Permission denied by deny list"
+                return "权限被拒绝：命中黑名单"
     if block.name in ("read_file", "write_file", "edit_file"):
         path = block.input.get("path", "")
         if not (WORKDIR / path).resolve().is_relative_to(WORKDIR):
-            choice = input("   Allow? [y/N] ").strip().lower()
+            choice = input("   允许执行吗？[y/N] ").strip().lower()
             if choice not in ("y", "yes"):
-                return "Permission denied by user"
+                return "权限被拒绝：用户不允许"
     return None
 
 # PreToolUse: 日志
 def log_hook(block):
-    print(f"[HOOK] {block.name}(...)")
+    print(f"[钩子] {block.name}(...)")
 
 # PostToolUse: 大文件提醒
 def large_output_hook(block, output):
     if len(str(output)) > 100000:
-        print(f"[HOOK] ⚠ Large output from {block.name}")
+        print(f"[钩子] 输出很长，来自 {block.name}")
 
 register_hook("PreToolUse", permission_hook)
 register_hook("PreToolUse", log_hook)
@@ -140,7 +150,7 @@ def summary_hook(messages: list) -> str | None:
     tool_count = sum(1 for m in messages
                      for b in (m.get("content") if isinstance(m.get("content"), list) else [])
                      if isinstance(b, dict) and b.get("type") == "tool_result")
-    print(f"\033[90m[HOOK] Stop: session used {tool_count} tool calls\033[0m")
+    print(f"\033[90m[钩子] Stop：这次会话共调用了 {tool_count} 次工具\033[0m")
     return None   # return None = allow stop, return string = force continuation
 
 register_hook("Stop", summary_hook)
@@ -174,7 +184,7 @@ for block in tool_calls:
         continue
 
     handler = TOOL_HANDLERS.get(block.name)
-    output = handler(**block.input) if handler else f"Unknown: {block.name}"
+    output = handler(**block.input) if handler else f"未知工具：{block.name}"
 
     trigger_hooks("PostToolUse", block, output)
 
@@ -202,9 +212,75 @@ for block in tool_calls:
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s04_hooks/code.py
 ```
+
+试试这些 prompt：
+
+1. `Read the file README.md`（应该直接通过，观察 hook 日志）
+2. `Create a file called test.txt`（通过后观察 PostToolUse 是否触发）
+3. `Delete all temporary files in /tmp`（bash + rm 触发权限 hook）
+
+观察重点：每次工具执行前，是否出现了 `[钩子]` 日志？权限被拒时，是 hook 拦截的还是循环里硬编码的？
+
+---
+
+## 产品经理视角
+
+> 钩子是给公司规矩留的插口。审计、合规、计费这类「每一步都要管」的事，统一挂在钩子上处理。
+
+### 什么信号说明需要它
+
+- 法务、安全要求「每一步都要留痕」。
+- 同一项检查要加在很多工具上，比如敏感词过滤、数据脱敏。
+- 需要在特定时机自动做事：操作后自动备份，任务结束时发通知。
+- 不同客户要不同的规则，又不想为每一家改核心代码。
+
+### 代价
+
+- **不透明**：钩子多了，一次操作到底经过了哪些检查很难看清，出了问题不好排查。
+- **变慢**：每个钩子都会增加一点等待时间。
+- **误拦**：钩子本身写错了，会拦下正常操作。
+
+### 先试试更便宜的办法
+
+- 只有一两个工具需要这项检查，就直接写在那个工具里，不需要钩子。
+
+### 你要拍板的规则
+
+| 规则 | 示例 |
+|---|---|
+| 哪些时机必须留痕 | 每次工具调用的前后、每次对外发消息 |
+| 哪些检查可以否决执行 | 发现回答里有身份证号，直接拦截 |
+| 日志存多久、谁能看 | 保存 180 天，只有安全部门能查 |
+| 钩子自己出错怎么办 | 审计钩子出错时，是停下不执行，还是放行并告警，要提前定 |
+
+### 怎么衡量
+
+- **留痕覆盖率**：抽查，应该是 100%。
+- **误拦率**：被拦下的操作里，有多少其实是正常的。
+- **额外耗时**：钩子让每次操作慢了多少。
+
+### 真实产品里的样子
+
+- Claude Code 在工具调用前、工具调用后、用户提交问题时、回答结束时等多个时机都提供钩子。企业常用它记录审计日志、自动整理代码格式、拦截危险命令。
+- Cursor 在 2025 年也推出了钩子功能（测试版）。
+- 选型篇的对照表里，Dify 和 Coze 开源版都没有钩子。要统一做审计和合规检查，低代码平台会比较吃力。
+
+### 面试题
+
+**「法务要求 Agent 的每一步操作都能追溯，你怎么落地？」**
+
+答题要点：
+
+- 用钩子统一记录，而不是靠每个工具自己记。
+- 定清楚记什么：谁、什么时候、调用了什么、输入了什么、结果是什么。
+- 定清楚存多久、谁能看；敏感数据在日志里也要脱敏。
+- 定期抽查覆盖率。
+- 选型时就要确认方案支持钩子。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
@@ -213,5 +289,7 @@ python s04_hooks/code.py
 Agent 现在能安全执行操作了。但它有没有停下来想过"我应该先做什么，再做什么"？给它一个复杂任务，它是一上来就动手，还是先列个计划？
 
 s05 TodoWrite → 给 Agent 一个计划工具。先列清单，再做。
+
+---
 
 > 运行方式：在仓库根目录执行 `python s04_hooks/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

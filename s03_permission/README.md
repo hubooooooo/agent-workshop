@@ -1,13 +1,23 @@
 # s03: Permission — 执行前做权限判断
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「约束域 · 权限系统」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 s01 → s02 → `s03` → [s04](../s04_hooks/) → s05 → ... → s16 → s17
 > *"工具执行前先做权限判断"* — 权限管线决定哪些操作需要审批。
 >
 > **Harness 层**: 权限 — 在工具执行前加一道门。
+
+---
+
+## 本章要学会的判断
+
+- **它解决什么**：Agent 动手之前，先判断这件事能不能做、要不要先问人。
+- **什么时候需要它**：有不可撤销、花钱或对外的操作：删数据、发邮件、付款、对客户说话。
+- **你要拍板的规则**：三档清单：直接放行 / 先问人 / 绝对禁止；谁有权批准；被拒绝后怎么告诉用户。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -52,7 +62,7 @@ DENY_LIST = [
 def check_deny_list(command: str) -> str | None:
     for pattern in DENY_LIST:
         if pattern in command:
-            return f"Blocked: '{pattern}' is on the deny list"
+            return f"已拦截：'{pattern}' 在黑名单里"
     return None
 ```
 
@@ -63,12 +73,12 @@ PERMISSION_RULES = [
     {
         "tools": ["read_file", "write_file", "edit_file"],
         "check": lambda args: not (WORKDIR / args.get("path", "")).resolve().is_relative_to(WORKDIR),
-        "message": "Access outside workspace",
+        "message": "要访问工作区以外的路径",
     },
     {
         "tools": ["bash"],
         "check": lambda args: any(kw in args.get("command", "") for kw in ["rm ", "> /etc/", "chmod 777"]),
-        "message": "Potentially destructive command",
+        "message": "可能有破坏性的命令",
     },
 ]
 
@@ -84,8 +94,8 @@ def check_rules(tool_name: str, args: dict) -> str | None:
 ```python
 def ask_user(tool_name: str, args: dict, reason: str) -> str:
     print(f"\n⚠  {reason}")
-    print(f"   Tool: {tool_name}({args})")
-    choice = input("   Allow? [y/N] ").strip().lower()
+    print(f"   工具：{tool_name}({args})")
+    choice = input("   允许执行吗？[y/N] ").strip().lower()
     return "allow" if choice in ("y", "yes") else "deny"
 ```
 
@@ -112,7 +122,7 @@ def check_permission(block) -> bool:
 # 在 agent_loop 中——s02 的循环只加了一行：
 for block in tool_calls:
     if not check_permission(block):           # ← 新增
-        results.append({... "content": "Permission denied."})
+        results.append({... "content": "权限被拒绝，没有执行。"})
         continue
     output = TOOL_HANDLERS[block.name](**block.input)  # s02 原有
     results.append(...)
@@ -133,9 +143,84 @@ for block in tool_calls:
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s03_permission/code.py
 ```
+
+试试这些 prompt：
+
+1. `Create a file called test.txt in the current directory`（应该直接通过）
+2. `Delete the file test.txt`（bash + rm 会触发闸门 2）
+3. `What files are in the current directory?`（只读，全部通过）
+4. `Try to write a file to /etc/something`（写工作区外，触发闸门 2）
+
+观察重点：哪些操作直接通过？哪些需要你确认？哪些被直接拒绝？
+
+---
+
+## 产品经理视角
+
+> 模型一定会出错，权限决定它出错时会闯多大的祸。这是产品经理最不能交给工程师单独决定的组件。
+
+### 什么信号说明需要它
+
+- Agent 能做不可撤销的事：删除、付款、发邮件、对外发布。
+- Agent 能接触敏感数据：客户信息、薪资、合同。
+- Agent 会读外部内容，比如网页、邮件、上传的文档。这些内容里可能藏着诱导它做坏事的指令，这类攻击叫「提示词注入」。
+
+### 代价
+
+- **打断用户**：每次确认都会打断用户。确认太多，用户就会不看内容直接点「同意」，权限形同虚设。
+- **两头为难**：规则太严，Agent 什么都做不了；太松，等于没有。
+- **要持续维护**：每上线一个新工具，就要补一条规则。
+
+### 先试试更便宜的办法
+
+- 只给只读工具。
+- 在隔离环境里跑，比如沙箱、测试账号，做错了也不影响真实数据。
+- 用可撤销的操作代替不可撤销的：先放进回收站而不是直接删除，先存草稿而不是直接发送。
+
+### 你要拍板的规则
+
+核心是一张三档清单，正好对应本章的三道闸门：
+
+| 档位 | 含义 | 示例（电商客服 Agent） |
+|---|---|---|
+| **直接放行** | 只读、可撤销、影响小 | 查订单、查物流 |
+| **先问人** | 会改变外部世界，但有时必须做 | 200 元以内的退款、修改收货地址 |
+| **绝对禁止** | 后果严重，任何情况都不允许 | 修改价格、导出全部客户数据、超过上限的退款 |
+
+另外还要定：
+
+- 谁有权批准，是用户本人还是主管。
+- 被拒绝后，Agent 怎么跟用户解释。
+- 规则多久复查一次。
+
+### 怎么衡量
+
+- **越权、误操作次数**：目标是 0。
+- **确认的通过率**：如果某类操作的通过率接近 100%，说明问得太多，用户已经不看了。这类操作如果可以撤销，可以考虑降档。
+- **被拒绝后，任务最终有没有完成**。
+
+### 真实产品里的样子
+
+- Claude Code 有几种权限模式：默认在改文件、执行命令前询问；可以设成自动接受改文件；也可以只出计划、不动手。企业管理员还能统一下发「允许、询问、禁止」三类规则，和本章的三道闸门一一对应。
+- ChatGPT 的 Agent 模式在执行购买这类有后果的操作前，会先请用户确认。
+- Cursor 让用户自己设置哪些命令可以自动执行、哪些必须先问。
+
+### 面试题
+
+**「确认弹窗太多，用户嫌烦，你怎么办？」**
+
+答题要点：
+
+- 不能简单地全部放开。
+- 先看数据：哪些操作的确认通过率接近 100%，而且可以撤销？这些可以降为直接放行。
+- 把「事后撤销」做成默认，用撤销按钮代替事前确认。
+- 合并确认：先给出整个计划，让用户一次确认。
+- 高风险操作保持确认，必要时还要二次确认。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
@@ -144,5 +229,7 @@ python s03_permission/code.py
 当前权限检查每次都在循环里硬编码 `check_permission()`。如果我想在每次工具执行前后加日志？如果想在某些操作后自动触发 git commit？这些扩展逻辑散落在 loop 里，循环很快就会膨胀。
 
 s04 Hooks → 给循环加钩子，扩展逻辑挂在钩子上，循环保持干净。
+
+---
 
 > 运行方式：在仓库根目录执行 `python s03_permission/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

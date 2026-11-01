@@ -1,14 +1,24 @@
 # s11: Background Tasks — 慢操作放后台
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「协作域 · 后台任务」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 s01 → ... → s09 → s10 → `s11` → [s12](../s12_cron_scheduler/) → s13 → ... → s16 → s17
 
 > *"慢操作放后台，Agent Loop 继续运行"* — 后台线程执行命令，后续轮次收集完成结果。
 >
 > **Harness 层**: 后台 — 异步执行, 不阻塞主循环。
+
+---
+
+## 本章要学会的判断
+
+- **它解决什么**：慢操作放到后台去跑，用户和 Agent 都不用干等。
+- **什么时候需要它**：有跑报表、长查询、批量处理这类慢操作。
+- **你要拍板的规则**：超过多久转到后台；完成后怎么通知；失败了谁兜底。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -156,9 +166,74 @@ npm install 在后台运行时，Agent Loop 继续执行了 read_file。
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s11_background_tasks/code.py
 ```
+
+试试这些 prompt：
+
+1. `Run pip list in the background and find all Python files in this directory`
+2. `Run npm install (use run_in_background) and while waiting, read package.json`
+3. `Run a short sleep in the background, then list all Markdown files`
+
+观察重点：显式设置 `run_in_background` 后，命令有没有被送到后台？`bg_id` 是否返回？后续轮次有没有以 `<task_notification>` 格式收集完成结果？
+
+---
+
+## 产品经理视角
+
+> 慢活放到后台，Agent 和用户都不用干等。产品经理要定的是「多慢算慢」和「做完了怎么通知」。
+
+### 什么信号说明需要它
+
+- 有耗时几分钟以上的操作：跑报表、批量处理、长时间的测试、深度调研。
+- 等待期间用户什么都做不了，或者干脆关掉页面走了。
+- 慢操作进行的同时，其实还有别的事可以做。
+
+### 代价
+
+- **结果回来的时机不好控制**：Agent 可能正在做别的事，要处理「中途插进来的结果」。
+- **失败了容易没人知道**：需要通知和兜底。
+- **要控制总量**：同时跑的后台任务多了，资源和费用都要管。
+
+### 先试试更便宜的办法
+
+- 让用户等，但显示进度和预计时间。
+- 把大任务拆小，让每一块都很快。
+
+### 你要拍板的规则
+
+| 规则 | 示例 |
+|---|---|
+| 多慢算慢 | 预计超过 30 秒的操作转到后台 |
+| 做完怎么通知 | 界面提示加消息推送；用户已经离开的，发站内信或邮件 |
+| 失败谁兜底 | 自动重试一次，还失败就通知用户，并说明原因 |
+| 同时最多跑几个 | 每个用户最多 3 个后台任务 |
+
+### 怎么衡量
+
+- 用户的等待时长。
+- 后台任务的失败率；失败以后，用户知道的比例。
+- 等待期间的用户流失率。
+
+### 真实产品里的样子
+
+- ChatGPT 的深度研究一次要跑好几分钟，用户可以先离开，做完再回来看。
+- OpenAI Codex 的云端任务、Cursor 的云端 Agent，把整个编程任务放到云端去跑，做完交给用户一份结果。
+- Claude Code 可以把耗时的命令放到后台运行，自己接着处理别的事。
+
+### 面试题
+
+**「生成一份报告要 5 分钟，用户体验很差，怎么办？」**
+
+答题要点：
+
+- 先看能不能变快：拆小、并行。
+- 实在快不了就转后台：立刻告诉用户「已经开始，预计 5 分钟」。
+- 做完主动通知；失败要有兜底和说明。
+- 用等待期间的流失率来衡量。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
@@ -167,5 +242,7 @@ python s11_background_tasks/code.py
 后台任务解决了"慢操作不阻塞"。但如果想定时做某件事呢？比如"每天早上 9 点跑测试"、"每 5 分钟检查一次服务器状态"。
 
 s12 Cron Scheduler → 给 Agent 装一个闹钟。
+
+---
 
 > 运行方式：在仓库根目录执行 `python s11_background_tasks/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。

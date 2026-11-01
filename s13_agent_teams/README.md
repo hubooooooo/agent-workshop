@@ -1,14 +1,25 @@
 # s13: Agent Teams — 团队运行时与协作协议
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「协作域 · Agent 团队」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 s01 → ... → [s10](../s10_task_system/) → `s13` → [s14](../s14_mcp_plugin/) → s15 → s16 → s17
 
 > *“一个 Agent 装不下整项工作时，就让队友分头完成。”* — 持久队友、共享任务认领、可选 worktree 与协作协议。
 >
 > **Harness 层**：Team（团队）— 多个 Agent 如何分工、共享状态，同时接受 Lead 控制。
+
+---
+
+## 本章要学会的判断
+
+- **它解决什么**：任务大到一个 Agent 处理不完时，让多个 Agent 分工协作。
+- **什么时候需要它**：任务能拆成边界清楚、可以同时做的几块。
+- **你要拍板的规则**：最多几个队友；各自的权限边界；结果冲突谁来裁决；总预算。
+- **提醒**：这是成本和复杂度最高的组件，绝大多数产品用不上。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -47,6 +58,8 @@ s13 复用 s10 的基础工具、Hooks、Permission 和 Task System，并增加�
 - **共享任务板** 让空闲队友发现 ready task，并在锁内完成认领。
 - **可选 worktree** 在需要时把任务绑定到另一个工作目录；未绑定任务仍使用仓库目录。
 - **类型化协议和计划闸门** 显式记录关机与审批状态，并在计划获批前阻止修改型工具。
+
+任务图继续采用 s10 的两阶段契约。Lead 先为所有节点调用 `create_task`，再使用返回的运行时 ID 调用 `update_task(addBlockedBy=...)`，最后才分配 ready task。只有 Lead 能使用 `update_task`；队友只能列举、认领和完成任务，团队运行期间不能改写任务图结构。
 
 s11 的后台任务和 s12 的定时任务没有被带入本章。它们不参与队友通信、任务认领或计划审批。
 
@@ -381,17 +394,17 @@ Lead：我建议按 config、auth 和 tests 三个方向分工。
 
 s13 >> 开始吧
 
-[task] config created
-[task] auth created → worktree auth-refactor
-[task] tests created
-[claim] alice → config (cwd: repository)
-[claim] bob → auth (cwd: .worktrees/auth-refactor)
-[teammate] alice spawned
-[teammate] bob spawned
-[complete] auth
-[bus] bob → lead (result) ...
-[bus] bob → lead (idle_notification) ...
-[wake: 2 team events → new turn]
+[建任务] config
+[建任务] auth（工作树 auth-refactor）
+[建任务] tests
+[认领] config -> 进行中（负责人：alice）
+[认领] auth -> 进行中（负责人：bob，工作目录 .worktrees/auth-refactor）
+[队友] alice 已启动
+[队友] bob 已启动
+[完成] auth
+[信箱] bob -> lead：(result) ...
+[信箱] bob -> lead：(idle_notification) ...
+[唤醒：2 条团队事件 -> 新一轮]
 Lead：我已收到认证任务的结果，接下来继续协调其余工作。
 ```
 
@@ -418,17 +431,99 @@ Lead：我已收到认证任务的结果，接下来继续协调其余工作。
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s13_agent_teams/code.py
 ```
+
+输入一个自然需求：
+
+```text
+把后端重构拆到共享任务板，在依赖允许时并行完成配置、认证和测试。
+认证任务使用 worktree，保持现有接口，并在最后汇总结果。
+```
+
+Lead 提出团队方案后回复：
+
+```text
+开始吧
+```
+
+观察 `.tasks/` 如何从 `pending` 进入 `in_progress` 和 `completed`，`.mailboxes/` 如何投递 `result` 与 `idle_notification`，以及 `.worktrees/` 是否只为绑定的任务创建。还可以检查直接消息是否先于任务板扫描，以及 `complete_task` 失败后队友的工作目录是否保持不变。
+
+---
+
+## 产品经理视角
+
+> 多个 Agent 分工协作，听起来最酷，但成本最高、最难排查。大多数产品用不上它。能讲清楚「为什么不用」，同样是判断力。
+
+### 什么信号说明需要它
+
+- 任务大到一个 Agent 一次处理不完，而且能拆成边界清楚、可以同时做的几块。
+- 这几块工作之间需要互相沟通。这是和子 Agent 的区别：子 Agent 只交回结论；队友之间会互相发消息、认领任务。
+- 时间比费用更重要，并行能明显缩短交付时间。
+
+### 代价
+
+- **费用成倍增加**：几个队友同时跑，就是几倍的模型调用。
+- **协调出错**：两个队友改了同一个地方、结果互相矛盾、互相等待卡死。
+- **最难排查**：出了问题，要看几段对话之间是怎么交互的。
+- **几乎要自研**：现成方案很少完整提供（见选型篇的对照表）。
+
+### 先试试更便宜的办法
+
+- 只要结论、不需要沟通：用子 Agent（s06）。
+- 分工固定：用工作流（s16），由脚本编排更稳定。
+- 时间允许：让一个 Agent 慢慢做。
+
+### 你要拍板的规则
+
+| 规则 | 示例 |
+|---|---|
+| 最多几个队友 | 3 个以内 |
+| 谁决定组队 | 负责协调的 Lead 提议，用户确认（本章就是这样做的） |
+| 各自的边界 | 每个队友只改自己负责的部分，最好各用独立的工作目录 |
+| 冲突谁裁决 | Lead 裁决；Lead 也定不了，就交给人 |
+| 总预算 | 整个团队的费用上限，超了全部停下 |
+
+### 怎么衡量
+
+和单个 Agent 做同样的任务对比三个数：
+
+- 交付时间缩短了多少。
+- 费用增加了多少。
+- 质量有没有提升。
+
+另外看冲突和返工的次数。
+
+### 真实产品里的样子
+
+- Claude Code 在 2026 年加入了实验性的 Agent 团队功能：一个 Lead 协调多个队友，队友之间可以直接发消息、认领共享的任务。本章就是照这个机制拆解的。
+- OpenAI Agents SDK 可以把任务转交给另一个 Agent，但队友之间不能互相发消息（见选型篇的对照表）。
+- 子 Agent 那一章提到，Anthropic 的多 Agent 研究系统消耗的 token 约为普通聊天的 15 倍。团队协作只会更贵，只有任务价值足够高时才划算。
+
+### 面试题
+
+**「老板想上多 Agent 协作，你怎么评估？」**
+
+答题要点：
+
+- 先问：任务能不能拆成独立的几块？几块之间需不需要沟通？
+- 拿单个 Agent、子 Agent、工作流做对比。
+- 算账：费用翻了几倍，换来了多少时间。
+- 小范围试点，看交付时间、费用、质量三个数。
+- 定好队友上限和冲突的裁决规则。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
 ## 接下来
 
-Lead 和队友目前只能调用直接写在 `code.py` 里的工具。接入 Jira、部署平台或知识库时，Harness 还要为每个外部系统分别编写工具定义和调用逻辑；外部系统增加或修改工具，也要跟着修改组件代码。
+Lead 和队友目前只能调用直接写在 `code.py` 里的工具。接入 Jira、部署平台或知识库时，Harness 还要为每个外部系统分别编写工具定义和调用逻辑；外部系统增加或修改工具，也要跟着修改课程代码。
 
 s14 MCP Tools → 通过统一的发现与调用协议，在运行时连接外部服务并把它们的工具加入工具池。
+
+---
 
 > 运行方式：在仓库根目录执行 `python s13_agent_teams/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。
 

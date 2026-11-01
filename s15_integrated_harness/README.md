@@ -1,14 +1,24 @@
 # s15: Agent Harness 集成 — 多种机制，一个循环
 
-
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「编排域 · 集成 Harness」。
 
+> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
 
 s01 → ... → s13 → [s14](../s14_mcp_plugin/) → `s15` → [s16](../s16_workflow_runtime/) → s17
 
 > *"多种机制，一个循环"* — 工具、权限、记忆、任务、团队、插件都挂在同一个 while True 上。
 >
 > **Harness 层**: 集成 — 把本章示例实际使用的机制放进同一个可运行系统。
+
+---
+
+## 本章要学会的判断
+
+- **这一章不是组件**：它不加新机制，而是把 s01～s14 的组件装进同一个循环，变成一个完整的系统。
+- **要学会什么**：拿 16 个组件当清单，拆解任何一个 Agent 产品，几分钟内看出它有什么、缺什么。
+- **要注意什么**：组件放到一起会互相影响。比如压缩可能把计划清单压掉，子 Agent 也必须受权限约束。
+
+> 代码看不懂可以先跳过，到课程网页 https://hubooooooo.github.io/claude-code-harness-study/ 看「回放」动画。详细的判断方法在本章末尾的「产品经理视角」。
 
 ---
 
@@ -79,16 +89,14 @@ S15 不再引入新机制，而是把前面各章的组件集成到同一个 har
 
 ## code.py 包含什么
 
-> 代码按小节放在 `s15_parts/pNN_*.py`，`code.py` 只负责按顺序把它们载入同一个命名空间；先看 `code.py` 顶部的分节清单，再打开对应文件。
-
 ### 工具与分发
 
-内置工具池包含 25 个工具：
+内置工具池包含 26 个工具：
 
 ```text
 bash, read_file, write_file, edit_file, glob
 todo_write, task, load_skill, compact
-create_task, list_tasks, get_task, claim_task, complete_task
+create_task, update_task, list_tasks, get_task, claim_task, complete_task
 schedule_cron, list_crons, cancel_cron
 spawn_teammate, list_teammates, send_message
 request_shutdown, request_plan, review_plan
@@ -130,6 +138,8 @@ S15 同时保留两层计划：
 前者帮助单个 Agent 不漂移；后者支撑团队协作。
 
 两者目标相近，但实现不同：`todo_write` 整表替换当前会话清单，task record 则有稳定 ID 和单条生命周期更新。下面单独出现的 `task` 工具表示“一次性派发隔离 subagent”，不是 Task System。
+
+集成宿主中的任务图仍采用两阶段构建：Lead 先创建所有任务节点，再使用 `create_task` 返回的运行时 ID 调用 `update_task`。队友只能列举、认领和完成任务，因此依赖结构由 Lead 在分发工作前确定。
 
 ### 子 agent 与团队
 
@@ -195,7 +205,6 @@ MCP 负责外部能力：
 
 - `connect_mcp(name)` 连接 mock server
 - `assemble_tool_pool()` 把 MCP 工具组装进工具池，并拒绝规范化后的名称冲突
-- `register_tool_extension(fn)` 是显式扩展点：注册的 `fn(tools, handlers)` 在每次组装末尾执行。后续章节（s16 的 `Workflow` 工具）通过它加工具，而不是替换 `assemble_tool_pool` 本身
 - 工具名统一为 `mcp__server__tool`
 
 ---
@@ -214,9 +223,79 @@ MCP 负责外部能力：
 ## 试一下
 
 ```sh
-cd agent-workshop
+cd claude-code-harness-study
 python s15_integrated_harness/code.py
 ```
+
+可以试：
+
+1. `检查这个仓库，告诉我哪些 Python 文件最重要。`
+2. `从已连接的文档中查一下 agent loop 的相关说明。`
+3. `请在独立的 worktree 中并行重构认证模块和登录页，修改前先把各自的计划给我看。`
+4. `3 分钟后提醒我开会。`
+5. `在后台安装依赖，同时继续阅读 README.md。`
+
+观察重点：
+
+- 工具调用前是否经过 hooks/permission
+- `connect_mcp` 后下一轮是否出现 MCP 工具
+- 设置 `run_in_background=true` 的 bash 调用是否返回 background placeholder
+- 到点是不是自动提醒开会
+- 队友是否提交 plan，并在 approval 前暂停
+- idle 队友是否只原子认领一个就绪 task
+- 队友所有文件工具是否都切换到已认领 task 的 `cwd`
+- 完成任务后是否在本轮剩余工具调用中保持 task `cwd`，并在 IDLE 时释放
+
+---
+
+## 产品经理视角
+
+> 真实的 Agent 产品，都是这些组件的组合。学会拿 16 个组件当清单去拆解产品，是这一章对产品经理最大的价值。
+
+### 用四个问题拆解任何一个 Agent 产品
+
+1. **它能做什么？** 看工具：自带哪些工具（s02），能接哪些外部系统（s14）。
+2. **它不让做什么？** 看权限（s03）：什么时候会弹出确认，什么事它会直接拒绝。
+3. **它怎么撑住长任务？** 看计划（s05）、压缩（s08）、记忆（s09）、后台任务（s11）。
+4. **它怎么分工？** 看子 Agent（s06）、团队（s13）、工作流（s16）。
+
+### 练习：拆解一个你常用的产品
+
+找一个你用过的 Agent 产品（Claude Code、Cursor、Manus、扣子上的某个智能体都可以），一边用一边填这张表：
+
+| 组件 | 去哪里观察 | 你看到了什么 |
+|---|---|---|
+| 工具 | 它调用了哪些工具，界面上有没有显示 | |
+| 权限 | 什么操作前会问你，什么事它会拒绝 | |
+| 计划 | 长任务开始前，有没有列清单 | |
+| 压缩 | 聊得很长以后，有没有提示，会不会忘事 | |
+| 记忆 | 新开一个对话，它还记不记得你 | |
+| 后台 | 慢操作时，你能不能做别的事 | |
+| 外接系统 | 能不能接你的文档、日历、代码仓库 | |
+
+填完再回答两个问题：它**缺**了哪个组件？如果你是这个产品的产品经理，你会先补哪一个，为什么？
+
+### 组合起来以后的新问题
+
+组件单独看都好理解，放到一起会互相影响：
+
+- **压缩和计划**：压缩时如果把计划清单也压掉了，Agent 就会忘了做到哪一步。所以要规定计划清单属于「必须保留」的内容。
+- **子 Agent 和权限**：子 Agent 一样能改文件、执行命令，权限规则必须对它同样生效。
+- **记忆和隐私**：对话里的敏感信息被压缩成摘要，或者被提取进记忆，就会保留得比用户预想的更久。
+- **组件越多越难排查**：一个回答不对，可能是工具、压缩、记忆中任何一环出了问题。这也是选型篇反复强调「最小可行 Harness」的原因。
+
+### 面试题
+
+**「拆解一个你常用的 Agent 产品。」**
+
+答题要点：
+
+- 用 16 个组件做清单，一项项说：它有什么、缺什么。
+- 推测它为什么这样取舍，比如「它不做记忆，可能是出于隐私考虑」。
+- 说出你会改哪一点、为什么、用什么指标验证。
+- 这道题考的不是你知道多少产品，而是你有没有一套拆解的方法。
+
+> 16 个组件的判断卡放在一起比较，见 [选型篇](https://github.com/hubooooooo/claude-code-harness-study/blob/main/guide/README.md)。
 
 ---
 
@@ -224,4 +303,8 @@ python s15_integrated_harness/code.py
 
 [s16 Workflow Runtime](../s16_workflow_runtime/) 会在这个 host 中加入 `Workflow` 工具。Workflow 把固定的编排路径写在代码中，并记录运行进度，使同一次运行可以继续执行。
 
+---
+
 > 运行方式：在仓库根目录执行 `python s15_integrated_harness/code.py`。`code.py` 依赖仓库根目录的 `common/`（读 .env、检查 Key、友好报错），单独拷走一个文件无法运行；要带走请连同 `common/` 一起。
+
+> 代码按小节放在 `s15_parts/pNN_*.py`，`code.py` 只负责按顺序把它们载入同一个命名空间；先看 `code.py` 顶部的分节清单，再打开对应文件。
