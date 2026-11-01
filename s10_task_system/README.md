@@ -2,7 +2,7 @@
 
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「协作域 · 任务系统」。
 
-> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
+> **讲解来源**：本章讲解与课程《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎做选型和验收时参考的实现，文件组织可能与课程版本不同。
 
 s01 → ... → s08 → s09 → `s10` → [s11](../s11_background_tasks/) → s12 → ... → s16 → s17
 
@@ -213,7 +213,7 @@ complete_task(tests.id)     # ✓ Completed
 ## 试一下
 
 ```sh
-cd claude-code-harness-study
+cd agent-workshop
 python s10_task_system/code.py
 ```
 

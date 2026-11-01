@@ -2,7 +2,7 @@
 
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「行动域 · 工具系统」。
 
-> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
+> **讲解来源**：本章讲解与课程《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎做选型和验收时参考的实现，文件组织可能与课程版本不同。
 
 s01 → `s02` → [s03](../s03_permission/) → s04 → ... → s16 → s17
 > *"加一个工具, 只加一个 handler"* — 循环不用动, 新工具注册进 dispatch map 就行。
@@ -146,7 +146,7 @@ for block in tool_calls:
 ## 试一下
 
 ```sh
-cd claude-code-harness-study
+cd agent-workshop
 python s02_tool_use/code.py
 ```
 

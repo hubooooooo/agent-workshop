@@ -9,7 +9,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = (
-    "README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "使用引导.md", "三门课总导读.md", "BLUEPRINT.md", "LICENSE",
+    "README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "使用引导.md", "BLUEPRINT.md", "LICENSE",
     "requirements.txt", "setup.sh", ".env.example", ".gitignore",
     "启动引擎.command",
 )

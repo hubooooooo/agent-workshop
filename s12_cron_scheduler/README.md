@@ -2,7 +2,7 @@
 
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「协作域 · 定时调度」。
 
-> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
+> **讲解来源**：本章讲解与课程《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎做选型和验收时参考的实现，文件组织可能与课程版本不同。
 
 s01 → ... → s10 → s11 → `s12` → [s13](../s13_agent_teams/) → ... → s17
 
@@ -142,7 +142,7 @@ for job in fired:
 ## 试一下
 
 ```sh
-cd claude-code-harness-study
+cd agent-workshop
 python s12_cron_scheduler/code.py
 ```
 

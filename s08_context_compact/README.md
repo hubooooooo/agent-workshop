@@ -2,7 +2,7 @@
 
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「上下文域 · 上下文压缩」。
 
-> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
+> **讲解来源**：本章讲解与课程《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎做选型和验收时参考的实现，文件组织可能与课程版本不同。
 
 s01 → s02 → s03 → s04 → s05 → s06 → s07 → `s08` → [s09](../s09_memory/) → s10 → ... → s16 → s17
 
@@ -309,7 +309,7 @@ if compact_requested:
 ## 试一下
 
 ```bash
-cd claude-code-harness-study
+cd agent-workshop
 python s08_context_compact/code.py
 ```
 

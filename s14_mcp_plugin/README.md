@@ -2,7 +2,7 @@
 
 > **蓝图对应**：本组件对应 [`BLUEPRINT.md`](../BLUEPRINT.md) 第 5 节「行动域 · MCP 插件」。
 
-> **讲解来源**：本章讲解与第一门课《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎和交接包用的参考实现，文件组织可能与课程版本不同。
+> **讲解来源**：本章讲解与课程《Learn Claude Code》同步，以课程仓库为准；这里的 `code.py` 是引擎做选型和验收时参考的实现，文件组织可能与课程版本不同。
 
 [s04](../s04_hooks/) → `s14` → [s15](../s15_integrated_harness/) → s16 → s17
 
@@ -184,7 +184,7 @@ MCP error: TypeError: <lambda>() missing 1 required argument: 'query'
 ## 试一下
 
 ```sh
-cd claude-code-harness-study
+cd agent-workshop
 python s14_mcp_plugin/code.py
 ```
 
