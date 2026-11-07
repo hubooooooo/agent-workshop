@@ -44,22 +44,30 @@ TRAJECTORY_DIR = WORKDIR / ".trajectories"
 
 
 def load_config() -> dict:
-    """Load optional declarative config; env vars take precedence."""
-    config: dict = {
-        "model": os.getenv("MODEL_ID", "claude-sonnet-4-6"),
-        "max_tokens": int(os.getenv("MAX_TOKENS", "8000")),
-        "timeout_seconds": float(os.getenv("TIMEOUT_SECONDS", "120")),
-        "max_retries": int(os.getenv("MAX_RETRIES", "3")),
-        "base_delay_seconds": float(os.getenv("BASE_DELAY_SECONDS", "0.5")),
+    """Load optional declarative config; env vars take precedence, then config.yaml, then defaults."""
+    defaults = {
+        "model": ("MODEL_ID", str, "claude-sonnet-4-6"),
+        "max_tokens": ("MAX_TOKENS", int, 8000),
+        "timeout_seconds": ("TIMEOUT_SECONDS", float, 120.0),
+        "max_retries": ("MAX_RETRIES", int, 3),
+        "base_delay_seconds": ("BASE_DELAY_SECONDS", float, 0.5),
     }
+    file_config: dict = {}
     config_path = WORKDIR / "config.yaml"
     if config_path.exists():
         with config_path.open(encoding="utf-8") as handle:
-            file_config = yaml.safe_load(handle) or {}
-        if isinstance(file_config, dict):
-            # env already-set values win; fill the rest from file
-            for key, value in file_config.items():
-                config.setdefault(key, value)
+            loaded = yaml.safe_load(handle) or {}
+        if isinstance(loaded, dict):
+            file_config = loaded
+    config = dict(file_config)  # keep extra keys (e.g. permission rules) from the file
+    for key, (env_name, cast, default) in defaults.items():
+        env_value = os.getenv(env_name)
+        if env_value:
+            config[key] = cast(env_value)
+        elif key in file_config:
+            config[key] = cast(file_config[key])
+        else:
+            config[key] = default
     return config
 
 

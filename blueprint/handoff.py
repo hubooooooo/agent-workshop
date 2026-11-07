@@ -20,7 +20,8 @@ from pathlib import Path
 
 from blueprint.knowledge import COMPONENT_BY_ID
 from blueprint.plain import plain_questions
-from blueprint.workspace import LOG_NAME, PRD_NAME, SKELETON_DIR, current_version, read_prd
+from blueprint.audit_agent import is_secret
+from blueprint.workspace import LOG_NAME, PRD_NAME, SKELETON_DIR, current_version, read_prd, slugify
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO_URL = "https://github.com/hubooooooo/agent-workshop"
@@ -51,9 +52,14 @@ def _load_plan(ws: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _safe_name(prd: str, ws: Path) -> str:
+    """产品名会用作文件名和 zip 里的目录名：去掉 / 和 .. 这类字符，防止写到别处或导出失败。"""
+    return slugify(_product_name(prd, ws.name))
+
+
 def handoff_filename(ws: Path) -> str:
     prd = read_prd(ws)
-    return f"{_product_name(prd, ws.name)}-交接包-V{current_version(prd)}.zip"
+    return f"{_safe_name(prd, ws)}-交接包-V{current_version(prd)}.zip"
 
 
 def render_guide(ws: Path, plan: dict) -> str:
@@ -155,7 +161,8 @@ def _workspace_files(ws: Path) -> list[tuple[Path, str]]:
     if skeleton.is_dir():
         for p in sorted(skeleton.rglob("*")):
             rel = p.relative_to(skeleton)
-            if p.is_file() and not p.is_symlink() and not (_SKIP_PARTS & set(rel.parts)) and p.name not in _SKIP_NAMES:
+            if (p.is_file() and not p.is_symlink() and not (_SKIP_PARTS & set(rel.parts)) and p.name not in _SKIP_NAMES
+                    and not is_secret(rel)):
                 files.append((p, f"skeleton/{rel.as_posix()}"))
     return [(p, arc) for p, arc in files if p.is_file()]
 
@@ -208,7 +215,7 @@ def build_handoff(ws: Path) -> bytes:
     ws = Path(ws)
     plan = _load_plan(ws)
     prd = read_prd(ws)
-    top = f"{_product_name(prd, ws.name)}-交接包/"
+    top = f"{_safe_name(prd, ws)}-交接包/"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as z:
         z.writestr(top + "交接说明.md", render_guide(ws, plan))

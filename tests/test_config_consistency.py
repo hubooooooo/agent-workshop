@@ -24,7 +24,7 @@ def test_default_model_is_consistent_everywhere():
     assert _env_value(ROOT / "scaffold/.env.example", "MODEL_ID") == DEFAULT_MODEL
 
     agent = (ROOT / "scaffold/agent.py").read_text(encoding="utf-8")
-    m = re.search(r'os\.getenv\("MODEL_ID",\s*"([^"]+)"\)', agent)
+    m = re.search(r'"model":\s*\("MODEL_ID",\s*str,\s*"([^"]+)"\)', agent)
     assert m and m.group(1) == DEFAULT_MODEL, "scaffold/agent.py 的默认模型与 DEFAULT_MODEL 不一致"
 
     config = (ROOT / "scaffold/config.example.yaml").read_text(encoding="utf-8")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import traceback
 from pathlib import Path
 
 from blueprint.knowledge import COMPONENT_BY_ID, FACT_KEYS, FIVE_ELEMENTS, LAYERS
@@ -62,7 +63,13 @@ def list_products(out_root: Path) -> list[dict]:
     if not out_root.is_dir():
         return []
     spaces = [p.parent for p in out_root.glob(f"*/{PRD_NAME}") if not p.parent.name.startswith(".")]
-    return sorted((product_summary(ws) for ws in spaces), key=lambda s: s["updated"], reverse=True)
+    summaries = []
+    for ws in spaces:
+        try:
+            summaries.append(product_summary(ws))
+        except Exception:  # noqa: BLE001 —— 一个工作区坏了不能拖垮整个侧栏，跳过它，终端里留个记录
+            traceback.print_exc()
+    return sorted(summaries, key=lambda s: s["updated"], reverse=True)
 
 
 def plan_view(plan: dict, ws: Path | None = None) -> dict:

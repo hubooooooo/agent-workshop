@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -176,10 +177,12 @@ class App:
             q = str(i.get("question") or "")
             original = originals.get(q, q)
             pairs.append((q if original == q else f"{q}（原问题：{original}）", str(i.get("answer") or "")))
+        if not any(q.strip() and a.strip() for q, a in pairs):
+            raise ValueError("没有可保存的回答")
         if not self.configured():
             raise ValueError("还没配置模型，先到「模型设置」填好 API Key。")
-        record_answers(ws, pairs)
-        return {"job": self.start_plan(slug).to_dict()}
+        # 答案在推导任务里写：已有推导在跑时整个请求被拒，PRD 不会被写一半或写两遍
+        return {"job": self.start_plan(slug, before=lambda: record_answers(ws, pairs)).to_dict()}
 
     def create_product(self, body: dict) -> dict:
         if not self.configured():
@@ -192,8 +195,9 @@ class App:
         job = self.start_plan(ws.name)
         return {"slug": ws.name, "job": job.to_dict()}
 
-    def start_plan(self, slug: str):
-        """（重新）推导方案。总是带断点续跑：输入没变的阶段直接沿用，不重复计费。"""
+    def start_plan(self, slug: str, before: Callable[[], None] | None = None):
+        """（重新）推导方案。总是带断点续跑：输入没变的阶段直接沿用，不重复计费。
+        before 在任务里、推导开始前执行（比如先把回答写进 PRD），和推导共用同一把「一次只跑一个」的锁。"""
         ws = resolve_workspace(self.out_root, slug)
         if not self.configured():
             raise ValueError("还没配置模型，先到「模型设置」填好 API Key。")
@@ -201,6 +205,8 @@ class App:
         def task(log):
             from blueprint.forward import run_plan
             from blueprint.workspace import log_plan
+            if before:
+                before()
             runner = self.make_runner()
             try:
                 plan, doc = run_plan((ws / "PRD.md").read_text(encoding="utf-8"), runner, ws,
@@ -283,7 +289,16 @@ class App:
 
     def audit(self, slug: str) -> dict:
         job = self.jobs.latest_for(slug)
-        return {**audit_detail(resolve_audit(self.out_root, slug)), "job": job.to_dict() if job else None}
+        try:
+            out_dir = resolve_audit(self.out_root, slug)
+        except LookupError:
+            # 刚开始检查时扫描还没写出 inventory.json，目录还不算检查结果；有任务在跑就先给页面一个空壳，
+            # 页面靠 job 显示进度，跑完再刷新。slug 一定是 _start_audit 用过的，不是网址里随便填的。
+            if not (job and job.kind == "audit" and job.status == "running"):
+                raise
+            out_dir = self.out_root / slug
+            out_dir.mkdir(parents=True, exist_ok=True)
+        return {**audit_detail(out_dir), "job": job.to_dict() if job else None}
 
     def pick_folder(self) -> dict:
         """弹出 macOS 的选文件夹窗口；点了取消返回空路径。"""
@@ -440,6 +455,15 @@ def make_handler(app: App):
         def _error(self, status: int, message: str) -> None:
             self._json({"error": message}, status)
 
+        def _fail(self, exc: Exception) -> None:
+            """接口出错一律给页面一个回答；不认识的异常记到终端，页面上说人话，不让连接直接断掉。"""
+            if isinstance(exc, LookupError) and not isinstance(exc, KeyError):
+                return self._error(404, str(exc))
+            if isinstance(exc, ValueError) and not isinstance(exc, UnicodeDecodeError):
+                return self._error(400, str(exc))
+            traceback.print_exc()
+            return self._error(500, "引擎内部出错了，可能是工作区里的文件被改坏了。详细信息在启动界面的终端窗口里。")
+
         def _body(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_BODY:
@@ -530,10 +554,8 @@ def make_handler(app: App):
                 if path.startswith("/api/"):
                     return self._error(404, "接口不存在")
                 return self._static(path)
-            except LookupError as exc:
-                return self._error(404, str(exc))
-            except ValueError as exc:
-                return self._error(400, str(exc))
+            except Exception as exc:  # noqa: BLE001
+                return self._fail(exc)
 
         def do_POST(self):
             if not self._host_ok() or not self._origin_ok():
@@ -580,10 +602,8 @@ def make_handler(app: App):
                     app.reveal(slug)
                     return self._json({"ok": True})
                 return self._error(404, "接口不存在")
-            except LookupError as exc:
-                return self._error(404, str(exc))
-            except (ValueError, json.JSONDecodeError) as exc:
-                return self._error(400, str(exc))
+            except Exception as exc:  # noqa: BLE001
+                return self._fail(exc)
 
     return Handler
 
