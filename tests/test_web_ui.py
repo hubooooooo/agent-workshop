@@ -350,6 +350,53 @@ def test_save_answers_rejects_empty(app):
         app.save_answers("玩具剧场", {"answers": [{"question": "q", "answer": "  "}]})
 
 
+
+def test_answers_rejected_while_plan_runs_leave_prd_untouched(app, monkeypatch):
+    wait_job(app.jobs.get(app.create_product({"name": "玩具剧场", "idea": IDEA})["job"]["id"]))
+    question = app.product("玩具剧场")["plan"]["questions"][0]["text"]
+    gate = threading.Event()
+    blocked = app.jobs.start("plan", "玩具剧场", lambda log: gate.wait(5))   # 模拟一个还在跑的推导
+    prd_path = app.out_root / "玩具剧场" / "PRD.md"
+    before = prd_path.read_text(encoding="utf-8")
+    try:
+        with pytest.raises(ValueError, match="正在推导中"):
+            app.save_answers("玩具剧场", {"answers": [{"question": question, "answer": "6 到 8 岁"}]})
+        assert prd_path.read_text(encoding="utf-8") == before
+    finally:
+        gate.set()
+        wait_job(blocked)
+
+
+def test_unexpected_errors_return_500_and_broken_workspace_does_not_hide_others(server, app):
+    _srv, base = server
+    wait_job(app.jobs.get(app.create_product({"name": "好的", "idea": IDEA})["job"]["id"]))
+    wait_job(app.jobs.get(app.create_product({"name": "坏的", "idea": IDEA})["job"]["id"]))
+    (app.out_root / "坏的" / "plan.json").write_text('{"components": 5}', encoding="utf-8")
+    status, body, _ = call(f"{base}/api/products/{urllib.request.quote('坏的')}")
+    assert status == 500 and "终端窗口" in json.loads(body)["error"]
+    status, body, _ = call(f"{base}/api/products")
+    assert status == 200 and [p["slug"] for p in json.loads(body)["products"]] == ["好的"]
+
+
+def test_audit_page_is_available_while_the_first_scan_runs(app, tmp_path):
+    project = tmp_path / "proj"
+    project.mkdir()
+    (project / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    from blueprint.web.audits import audit_dir_for
+    gate = threading.Event()
+    slug = audit_dir_for(app.out_root, project).name
+    job = app.jobs.start("audit", slug, lambda log: gate.wait(5))         # 扫描还没写出 inventory.json
+    try:
+        detail = app.audit(slug)
+        assert detail["job"]["status"] == "running" and detail["finished"] is False
+    finally:
+        gate.set()
+        wait_job(job)
+    with pytest.raises(LookupError):                                       # 任务结束仍没有结果：照常 404
+        app.audit(slug)
+    with pytest.raises(LookupError):
+        app.audit("audit-从来没检查过")
+
 # -- 交接包与大白话问题 -----------------------------------------------------------
 
 def test_handoff_download_over_http(server, app):

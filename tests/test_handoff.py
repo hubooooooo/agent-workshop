@@ -59,6 +59,25 @@ def test_skeleton_is_included_without_secrets_or_environments(ws):
     assert "玩具剧场-交接包/skeleton/agent.py" in names
     assert not any(part in n for n in names for part in (".env", ".venv", "node_modules", "__pycache__"))
 
+    for secret in (".env.local", "id_rsa", "server.pem", "config/credentials.json"):
+        (sk / secret).parent.mkdir(parents=True, exist_ok=True)
+        (sk / secret).write_text("secret", encoding="utf-8")
+    (sk / ".env.example").write_text("ANTHROPIC_API_KEY=\n", encoding="utf-8")
+    names = set(unzip(build_handoff(ws)))
+    assert not any(n.endswith(s) for n in names for s in (".env.local", "id_rsa", "server.pem", "credentials.json"))
+    assert "玩具剧场-交接包/skeleton/.env.example" in names     # 示例配置要保留
+
+
+@pytest.mark.parametrize("name", ["A/B 助手", "../../evil"])
+def test_product_name_with_path_characters_stays_inside(tmp_path, name):
+    ws = init_workspace(tmp_path, name, IDEA)
+    run_plan((ws / "PRD.md").read_text(encoding="utf-8"), MockRunner(), ws, log=lambda _m: None)
+    filename = handoff_filename(ws)
+    assert "/" not in filename and ".." not in filename
+    names = list(unzip(build_handoff(ws)))
+    assert all("/" in n and ".." not in n and not n.startswith("/") for n in names)
+    assert len({n.split("/")[0] for n in names}) == 1          # 全在同一个顶层目录里
+
 
 def test_requires_a_plan(tmp_path):
     ws = init_workspace(tmp_path, "只有点子", "一个想法")

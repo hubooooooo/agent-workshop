@@ -155,3 +155,17 @@ def test_agent_loop_executes_a_tool_call() -> None:
 
         component.client.messages.create = respond
         assert component.agent_loop("read f.txt") == "Read it."
+
+
+def test_config_yaml_values_apply_and_env_wins(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "config.yaml").write_text("model: from-file\nmax_tokens: 123\nextra: kept\n", encoding="utf-8")
+        module = load_component(Path(tmp))          # load_component sets MODEL_ID=test-model
+        for name in ("MODEL_ID", "MAX_TOKENS"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setattr(module, "WORKDIR", Path(tmp))
+        config = module.load_config()
+        assert config["model"] == "from-file" and config["max_tokens"] == 123 and config["extra"] == "kept"
+        assert config["max_retries"] == 3                                   # 文件没写的用默认值
+        monkeypatch.setenv("MODEL_ID", "from-env")
+        assert module.load_config()["model"] == "from-env"
