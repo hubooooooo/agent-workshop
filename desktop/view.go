@@ -152,8 +152,13 @@ func productView(c *ui.Context) {
 				}
 				ui.Text(c, title).FontSize(15).Bold()
 				if selected != "" {
-					action.ActionIcon(c, lucide.FolderOpen(), action.ActionIconProps{Title: "在 Finder 里打开工作区"}).OnClick(func() {
-						go revealProduct(app.engineURL, selected)
+					ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+						action.ActionIcon(c, lucide.PackageOpen(), action.ActionIconProps{Title: "下载交接包"}).OnClick(func() {
+							go app.downloadHandoffZip(selected)
+						})
+						action.ActionIcon(c, lucide.FolderOpen(), action.ActionIconProps{Title: "在 Finder 里打开工作区"}).OnClick(func() {
+							go revealProduct(app.engineURL, selected)
+						})
 					})
 				}
 			})
@@ -165,16 +170,22 @@ func productView(c *ui.Context) {
 				})
 			} else {
 				nav.Tabs(c, &tab, nav.TabsProps{Items: []nav.TabItem{
-					{Label: "PRD"}, {Label: "方案"},
+					{Label: "PRD"}, {Label: "方案"}, {Label: "试玩"},
 				}, Size: theme.Small}, func(i int) {
-					if i == 0 {
+					switch i {
+					case 0:
 						prdPanel(c, selected, loading, prdErr, prdText)
-					} else {
+					case 1:
 						planPanel(c)
+					default:
+						playPanel(c, selected)
 					}
 				}).Grow(1)
 			}
 			app.mu.Lock()
+			if tab != app.productTab && tab == 2 {
+				go app.startPlay(selected)
+			}
 			app.productTab = tab
 			app.mu.Unlock()
 		})
@@ -401,6 +412,97 @@ func factColor(status string) display.TagColor {
 	default:
 		return display.TagInfo
 	}
+}
+
+// playPanel 试玩标签页：开场白 + 对话 + 模拟动作卡。
+func playPanel(c *ui.Context, slug string) {
+	tk := theme.TokensOf(c)
+	app.mu.Lock()
+	intro := app.playIntro
+	playErr := app.playErr
+	messages := append([]PlayMsg(nil), app.playMessages...)
+	streaming := app.playStreaming
+	draft := app.playDraft
+	feedback := app.playFeedback
+	handoffBusy := app.handoffBusy
+	handoffStatus := app.handoffStatus
+	app.mu.Unlock()
+
+	ui.Column(c).Grow(1).Basis(0).Children(func() {
+		if handoffBusy || handoffStatus != "" {
+			ui.Row(c).Shrink(0).Padding(2, 8).AlignItems(ui.Center).Gap(8).Children(func() {
+				if handoffBusy {
+					ui.Text(c, "正在打包交接包…").FontSize(12).TextColor(tk.TextSecondary)
+				} else if handoffStatus != "" {
+					ui.Text(c, handoffStatus).FontSize(12).TextColor(tk.TextSecondary)
+				}
+			})
+		}
+		ui.Scroll(c).Grow(1).Basis(0).Children(func() {
+			ui.Column(c).Padding(16, 24).Gap(12).MaxWidth(760).Children(func() {
+				if intro != "" {
+					markdown.Markdown(c, intro, markdown.MarkdownProps{Variant: markdown.Chat})
+				}
+				for _, m := range messages {
+					switch m.Role {
+					case "user":
+						ui.Column(c).AlignSelf(ui.End).MaxWidth(520).
+							Padding(8, 12).Radius(12).Background(tk.PrimaryBg).Children(func() {
+							ui.Text(c, m.Text).FontSize(14)
+						})
+					case "step":
+						stepCard(c, m.Step)
+					default:
+						markdown.Markdown(c, m.Text, markdown.MarkdownProps{Variant: markdown.Chat})
+					}
+				}
+				if feedback && !streaming {
+					ui.Row(c).Gap(6).Children(func() {
+						action.Button(c, "这里不对", action.ButtonProps{Size: theme.Small}).OnClick(func() {
+							go app.sendPlay("这里不对")
+						})
+					})
+				}
+				if playErr != "" {
+					ui.Text(c, "⚠ "+playErr).FontSize(13).TextColor(tk.ErrorText)
+				}
+				if streaming {
+					ui.Text(c, "Agent 正在按方案跑工具…").FontSize(12).TextColor(tk.TextSecondary)
+				}
+			})
+		})
+		ui.Row(c).Shrink(0).Padding(12, 16).Gap(8).AlignItems(ui.Center).Children(func() {
+			field.Input(c, &draft, field.InputProps{Placeholder: "以使用者的身份说一句话…", Size: theme.Middle}).Grow(1).
+				OnSubmit(func() { go app.sendPlay(draft) })
+			action.Button(c, "发送", action.ButtonProps{Variant: action.Primary, Size: theme.Middle}).
+				OnClick(func() { go app.sendPlay(draft) })
+		})
+	})
+}
+
+// stepCard 一次模拟动作：动作名 + 输入/结果。
+func stepCard(c *ui.Context, step map[string]string) {
+	tk := theme.TokensOf(c)
+	ui.Column(c).Padding(10, 12).Gap(4).Radius(8).Background(tk.FillQuaternary).Border(1, tk.BorderSecondary).Children(func() {
+		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+			display.Tag(c, "动作", display.TagProps{Color: display.TagProcessing, Size: theme.Small})
+			if step["tool"] != "" {
+				ui.Text(c, step["tool"]).FontSize(13).Bold()
+			}
+			if step["action"] != "" {
+				display.Tag(c, step["action"], display.TagProps{Size: theme.Small})
+			}
+			if step["who"] != "" {
+				ui.Text(c, "由 "+step["who"]+" 执行").FontSize(12).TextColor(tk.TextSecondary)
+			}
+		})
+		if step["input"] != "" {
+			ui.Text(c, "输入："+step["input"]).FontSize(12).TextColor(tk.TextSecondary)
+		}
+		if step["result"] != "" {
+			ui.Text(c, "结果："+step["result"]).FontSize(12).TextColor(tk.TextSecondary)
+		}
+	})
 }
 
 // newProductView 对话式新建产品：追问流 + 确认卡片 + 快捷回复。

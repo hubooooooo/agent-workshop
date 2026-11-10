@@ -259,6 +259,7 @@ type ChatEvent struct {
 	Delta   string         `json:"delta"`
 	Name    string         `json:"name"`
 	Args    map[string]any `json:"args"`
+	Data    map[string]any `json:"data"`
 	Items   []string       `json:"items"`
 	Message string         `json:"message"`
 }
@@ -335,6 +336,59 @@ func getProductDetail(base, slug string) (map[string]any, error) {
 func getJobUpdates(base, id string, since int) (map[string]any, error) {
 	return apiGet(base, fmt.Sprintf("/api/jobs/%s?since=%d", url.PathEscape(id), since))
 }
+
+// postEmpty 走引擎的无参 POST 接口（play-intro 这类）。
+func postEmpty(base, path string) (map[string]any, error) {
+	return postJSONData(base, path, "{}")
+}
+
+// downloadHandoff 下载交接包 zip，存到用户的下载目录，返回落盘路径。
+func downloadHandoff(base, slug string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, base+"/api/products/"+url.PathEscape(slug)+"/handoff", nil)
+	if err != nil {
+		return "", err
+	}
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("连不上引擎：%w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		var data map[string]any
+		_ = json.Unmarshal(body, &data)
+		return "", fmt.Errorf("%v", data["error"])
+	}
+	name := slug + "-交接包.zip"
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if m := filenameStar.FindStringSubmatch(cd); m != nil {
+			if decoded, err := url.PathUnescape(m[1]); err == nil {
+				name = decoded
+			}
+		}
+	}
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	outDir := filepath.Join(dir, "Downloads")
+	if st, err := os.Stat(outDir); err != nil || !st.IsDir() {
+		outDir = dir
+	}
+	path := filepath.Join(outDir, name)
+	f, err := os.Create(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+var filenameStar = regexp.MustCompile(`filename\*=UTF-8''([^;]+)`)
 
 // saveSettingsJSON 保存模型设置，返回引擎的 {ok, message}。
 func saveSettingsJSON(base, body string) (map[string]any, error) {

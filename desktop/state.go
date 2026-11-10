@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"sync"
 	"time"
@@ -111,6 +112,13 @@ type JobInfo struct {
 	Finished  float64  `json:"finished"`
 }
 
+// PlayMsg 是试玩页的一行：用户话、Agent 回复或一个模拟动作步骤。
+type PlayMsg struct {
+	Role string            // user / assistant / step
+	Text string
+	Step map[string]string // step 行的动作卡字段
+}
+
 // AppState 是界面状态。写操作都在后台 goroutine（引擎连接、取数据、流式对话），
 // 界面每帧只读；用一把锁串起来，避免数据竞争。
 type AppState struct {
@@ -132,9 +140,22 @@ type AppState struct {
 	// 产品详情页（方案）
 	plan       *PlanView
 	planErr    string
-	productTab int // 0=PRD 1=方案
+	productTab int // 0=PRD 1=方案 2=试玩
 	job        *JobInfo
 	pollStop   chan struct{}
+
+	// 试玩页
+	playIntro     string
+	playErr       string
+	playStarted   bool
+	playMessages  []PlayMsg
+	playStreaming bool
+	playDraft     string
+	playFeedback  bool // 是否收到过「这里不对」的反馈卡
+
+	// 交接包
+	handoffBusy  bool
+	handoffStatus string
 
 	// 新建产品对话页
 	chatMessages  []ChatMsg
@@ -177,6 +198,9 @@ func (s *AppState) selectProduct(slug string) {
 	s.plan, s.job, s.planErr = nil, nil, ""
 	s.productTab = 0
 	s.loading = true
+	s.playStarted, s.playIntro, s.playMessages, s.playErr, s.playDraft = false, "", nil, "", ""
+	s.playStreaming = false
+	s.handoffBusy, s.handoffStatus = false, ""
 	s.mu.Unlock()
 	s.invalidate()
 	go s.fetchPRD(slug)
@@ -305,6 +329,133 @@ func parseJob(raw any) (*JobInfo, error) {
 		return nil, err
 	}
 	return &j, nil
+}
+
+// -- 试玩 --------------------------------------------------------------------
+
+// startPlay 进入试玩：拉开场白（角色说明），没方案的报错。
+func (s *AppState) startPlay(slug string) {
+	s.mu.Lock()
+	s.productTab = 2
+	if s.playStarted {
+		s.mu.Unlock()
+		return
+	}
+	s.playStarted = true
+	s.playErr = ""
+	s.mu.Unlock()
+	s.invalidate()
+	go func() {
+		data, err := postEmpty(s.engineURL, "/api/products/"+url.PathEscape(slug)+"/play-intro")
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.selected != slug {
+			return
+		}
+		if err != nil {
+			s.playErr = err.Error()
+		} else {
+			text, _ := data["text"].(string)
+			if text == "" {
+				role, _ := data["role"].(string)
+				text = fmt.Sprintf("你现在扮演**%s**。发一句话试试，我会按方案里的设计回应。", role)
+			}
+			s.playIntro = text
+		}
+		s.invalidate()
+	}()
+}
+
+// sendPlay 发一句试玩的话，流式收 Agent 的模拟动作和回复。
+func (s *AppState) sendPlay(text string) {
+	s.mu.Lock()
+	if s.playStreaming || text == "" {
+		s.mu.Unlock()
+		return
+	}
+	s.playMessages = append(s.playMessages, PlayMsg{Role: "user", Text: text})
+	s.playStreaming = true
+	s.playErr = ""
+	s.playDraft = ""
+	s.playFeedback = false
+	slug := s.selected
+	s.mu.Unlock()
+	s.invalidate()
+	go func() {
+		err := streamChat(s.engineURL, "/api/products/"+url.PathEscape(slug)+"/play", chatFromPlay(s.playMessages), func(ev ChatEvent) {
+			s.mu.Lock()
+			switch ev.Type {
+			case "text":
+				if n := len(s.playMessages); n == 0 || s.playMessages[n-1].Role != "assistant" {
+					s.playMessages = append(s.playMessages, PlayMsg{Role: "assistant"})
+				}
+				s.playMessages[len(s.playMessages)-1].Text += ev.Delta
+			case "data":
+				switch ev.Name {
+				case "play_step":
+					step := map[string]string{}
+					for k, v := range ev.Data {
+						if sv, ok := v.(string); ok {
+							step[k] = sv
+						}
+					}
+					s.playMessages = append(s.playMessages, PlayMsg{Role: "step", Step: step})
+				case "play_feedback":
+					s.playFeedback = true
+				}
+			case "error":
+				s.playErr = ev.Message
+			}
+			s.mu.Unlock()
+			s.invalidate()
+		})
+		s.mu.Lock()
+		s.playStreaming = false
+		if err != nil {
+			s.playErr = err.Error()
+		}
+		s.mu.Unlock()
+		s.invalidate()
+	}()
+}
+
+// chatFromPlay 把试玩消息转成引擎要的 {role, text} 列表（step 行不算对话）。
+func chatFromPlay(msgs []PlayMsg) []ChatMsg {
+	var out []ChatMsg
+	for _, m := range msgs {
+		if m.Role == "user" || m.Role == "assistant" {
+			out = append(out, ChatMsg{Role: m.Role, Text: m.Text})
+		}
+	}
+	return out
+}
+
+// -- 交接包 ------------------------------------------------------------------
+
+// downloadHandoffZip 下载交接包并打开所在目录。
+func (s *AppState) downloadHandoffZip(slug string) {
+	s.mu.Lock()
+	if s.handoffBusy {
+		s.mu.Unlock()
+		return
+	}
+	s.handoffBusy = true
+	s.handoffStatus = ""
+	s.mu.Unlock()
+	s.invalidate()
+	go func() {
+		path, err := downloadHandoff(s.engineURL, slug)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.handoffBusy = false
+		if err != nil {
+			s.handoffStatus = "下载失败：" + err.Error()
+		} else {
+			_ = exec.Command("open", "-R", path).Start() // Finder 里高亮这个文件
+			s.handoffStatus = "已下载：" + path
+		}
+		s.invalidate()
+	}()
 }
 
 // -- 新建产品对话 -----------------------------------------------------------
