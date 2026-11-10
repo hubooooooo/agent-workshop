@@ -72,6 +72,18 @@ def test_bump_prd_survives_ai_rewritten_prd_without_sections(tmp_path):
     assert "## 版本演进记录" in text and PENDING_HEADING in text and "| V4 |" in text
 
 
+def test_bump_prd_summary_with_pipe_keeps_version_table_parseable(tmp_path):
+    """需求摘要里的 | 会把版本表格多劈出一列，网页版本历史会读错（回归）。"""
+    from blueprint.workspace import version_table
+
+    ws = _init(tmp_path)
+    _old, _new, text = bump_prd(ws, "支持 A|B 两种模式")
+    rows = version_table(text)
+    last = rows[-1]
+    assert last["version"] == 2 and last["source"] == "验证后的新需求"
+    assert "A|B" not in text or last["change"].count("|") == 0
+
+
 def test_revise_reruns_plan_and_logs_component_diff(tmp_path):
     ws = _init(tmp_path)
     from blueprint.forward import run_plan

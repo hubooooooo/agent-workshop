@@ -63,7 +63,9 @@ def is_secret(rel: Path) -> bool:
     name = rel.name.lower()
     if name == ".env.example":
         return False
-    return name in SECRET_NAMES or name.startswith(".env.") or rel.suffix.lower() in SECRET_SUFFIXES
+    # endswith(".env") 盖住 prod.env / config.env 这类改了名的密钥文件，也覆盖 .env 本身
+    return name in SECRET_NAMES or name.startswith(".env.") or name.endswith(".env") \
+        or rel.suffix.lower() in SECRET_SUFFIXES
 
 
 class ProjectFiles:

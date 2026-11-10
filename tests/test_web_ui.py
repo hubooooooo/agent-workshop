@@ -115,6 +115,12 @@ def test_friendly_error_maps_sdk_errors_by_name():
     assert "不是你的问题" in friendly_error(InternalServerError("502"))
 
 
+def test_friendly_error_maps_openai_errors_with_resume_hint():
+    from blueprint.openai_compat import OpenAIError
+    message = friendly_error(OpenAIError("接口返回 502：bad gateway"))
+    assert "502" in message and "继续推导" in message
+
+
 def test_real_mode_requires_configured_key(tmp_path, monkeypatch):
     clear_env(monkeypatch)
     app = App(tmp_path / "out", env_path=tmp_path / ".env", mock=False)

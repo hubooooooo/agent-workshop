@@ -31,8 +31,8 @@ class Block(dict):
             raise AttributeError(key) from None
 
 
-class OpenAIError(RuntimeError):
-    pass
+class OpenAIError(ValueError):
+    """继承 ValueError：命令行（blueprint/cli.py 的 ValueError 兜底）和网页（friendly_error）都能给出友好提示，不打堆栈。"""
 
 
 def _text_of(content: Any) -> str:
@@ -142,12 +142,16 @@ class OpenAICompatClient:
 
     def chat(self, *, model: str, max_tokens: int, system: str, messages: list[dict],
              tools: list[dict] | None) -> SimpleNamespace:
+        import httpx
         body: dict = {"model": model, "messages": to_openai_messages(system, messages)}
         # OpenAI 官方的新模型只认 max_completion_tokens；兼容接口（DeepSeek、Kimi、中转）普遍只认 max_tokens
         body["max_completion_tokens" if self.official else "max_tokens"] = max_tokens
         if tools:
             body["tools"] = to_openai_tools(tools)
-        resp = self._http.post(f"{self.base_url}/chat/completions", json=body)
+        try:
+            resp = self._http.post(f"{self.base_url}/chat/completions", json=body)
+        except httpx.HTTPError as exc:
+            raise OpenAIError(f"连不上接口 {self.base_url}：{exc}。请检查网络和接口地址") from exc
         if resp.status_code >= 400:
             raise OpenAIError(f"接口返回 {resp.status_code}：{resp.text[:400]}")
         return from_openai_response(resp.json())

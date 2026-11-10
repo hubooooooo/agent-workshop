@@ -94,6 +94,20 @@ def test_http_error_is_reported_with_status():
         client.messages.create(model="m", max_tokens=8, messages=[{"role": "user", "content": "hi"}])
 
 
+def test_network_error_becomes_friendly_openai_error():
+    def broken(request):
+        raise httpx.ConnectError("refused")
+
+    client = OpenAICompatClient("sk", "https://relay.example/v1", transport=httpx.MockTransport(broken))
+    with pytest.raises(OpenAIError, match="连不上接口"):
+        client.messages.create(model="m", max_tokens=8, messages=[{"role": "user", "content": "hi"}])
+
+
+def test_openai_error_is_value_error_so_cli_prints_a_friendly_line():
+    """cli.main 的 ValueError 兜底要能接住 OpenAI 格式的接口错误，不能把堆栈打给用户。"""
+    assert issubclass(OpenAIError, ValueError)
+
+
 def test_runner_picks_openai_client_from_env(monkeypatch):
     for name, value in {"API_FORMAT": "openai", "OPENAI_API_KEY": "sk-oa-real-0123456789",
                         "OPENAI_BASE_URL": "https://relay.example/v1", "MODEL_ID": ""}.items():

@@ -68,6 +68,18 @@ def test_skeleton_is_included_without_secrets_or_environments(ws):
     assert "玩具剧场-交接包/skeleton/.env.example" in names     # 示例配置要保留
 
 
+def test_renamed_env_files_are_treated_as_secrets(ws):
+    """prod.env 这类改了名的密钥文件同样不读、不打包（回归：曾经被当成普通文件带走）。"""
+    from blueprint.audit_agent import is_secret
+
+    for name in ("prod.env", "dev.env", "config.env"):
+        assert is_secret(Path(name)), name
+    assert not is_secret(Path(".env.example"))
+    sk = ws / "skeleton"
+    (sk / "prod.env").write_text("API_KEY=sk-real\n", encoding="utf-8")
+    assert not any("prod.env" in n for n in unzip(build_handoff(ws)))
+
+
 @pytest.mark.parametrize("name", ["A/B 助手", "../../evil"])
 def test_product_name_with_path_characters_stays_inside(tmp_path, name):
     ws = init_workspace(tmp_path, name, IDEA)

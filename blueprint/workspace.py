@@ -272,7 +272,7 @@ def bump_prd(ws: Path, requirement: str, source: str = "验证后的新需求") 
     plan_snapshot = ws / HISTORY_DIR / f"V{old}.plan.json"
     if plan.is_file() and not plan_snapshot.exists():      # 当时的方案也留一份，版本历史里能对比选型
         atomic_write(plan_snapshot, plan.read_text(encoding="utf-8"))
-    summary = requirement.strip().splitlines()[0][:60]
+    summary = requirement.strip().splitlines()[0][:60].replace("|", "／").replace("\n", " ")
     text = _bump_header(text, new)
     text = _append_history_row(text, f"| V{new} | {_today()} | {summary} | {source} |")
     text = _append_pending(text, new, requirement)
