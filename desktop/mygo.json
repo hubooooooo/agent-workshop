@@ -1,0 +1,7 @@
+{
+  "name": "Agent 工坊",
+  "identifier": "com.agentworkshop.desktop",
+  "version": "0.1.0",
+  "i18n": { "dir": "locales", "source": "en" },
+  "macos": { "dmgTitle": "Agent 工坊" }
+}

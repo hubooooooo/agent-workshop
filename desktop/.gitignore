@@ -1,0 +1,5 @@
+# 编译产物
+/agent-workshop-desktop
+/desktop
+*.app
+/dist/
