@@ -28,6 +28,7 @@ const (
 	PageProducts Page = iota
 	PageNew      // 对话式新建产品
 	PageSettings // 模型设置
+	PageAudits   // 外部项目检查
 )
 
 // ChatMsg 是一条对话消息（与引擎 chat.parse_messages 的格式一致）。
@@ -119,6 +120,33 @@ type PlayMsg struct {
 	Step map[string]string // step 行的动作卡字段
 }
 
+// AuditSummary 是一个检查结果（与 audits.py 的 audit_summary 对齐）。
+type AuditSummary struct {
+	Slug       string  `json:"slug"`
+	Name       string  `json:"name"`
+	Title      string  `json:"title"`
+	Root       string  `json:"root"`
+	Finished   bool    `json:"finished"`
+	Completion float64 `json:"completion"`
+	Verdict    string  `json:"verdict"`
+	Missing    int     `json:"missing"`
+	Weak       int     `json:"weak"`
+	Mode       string  `json:"mode"`
+	Updated    float64 `json:"updated"`
+}
+
+// AuditDetail 是一个检查结果的完整内容（audit_detail）。
+type AuditDetail struct {
+	AuditSummary
+	Path        string `json:"path"`
+	Report      string `json:"report"`
+	SuggestedPRD string `json:"suggested_prd"`
+	ModeNote    string `json:"mode_note"`
+	FeaturesFrom string `json:"features_from"`
+	FilesSeen   int    `json:"files_seen"`
+	Calls       int    `json:"calls"`
+}
+
 // AppState 是界面状态。写操作都在后台 goroutine（引擎连接、取数据、流式对话），
 // 界面每帧只读；用一把锁串起来，避免数据竞争。
 type AppState struct {
@@ -156,6 +184,17 @@ type AppState struct {
 	// 交接包
 	handoffBusy  bool
 	handoffStatus string
+
+	// 项目检查页
+	audits         []AuditSummary
+	auditsErr      string
+	auditSelected  string
+	auditDetail    *AuditDetail
+	auditDetailErr string
+	auditJob       *JobInfo
+	auditPollStop  chan struct{}
+	auditBusy      bool
+	auditStatus    string
 
 	// 新建产品对话页
 	chatMessages  []ChatMsg
@@ -455,6 +494,209 @@ func (s *AppState) downloadHandoffZip(slug string) {
 			s.handoffStatus = "已下载：" + path
 		}
 		s.invalidate()
+	}()
+}
+
+// -- 项目检查 ------------------------------------------------------------------
+
+// loadAudits 拉检查结果列表。
+func (s *AppState) loadAudits() {
+	s.mu.Lock()
+	base := s.engineURL
+	s.mu.Unlock()
+	if base == "" {
+		return
+	}
+	data, err := getAudits(base)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err != nil {
+		s.auditsErr = err.Error()
+	} else {
+		s.auditsErr = ""
+		if raw, ok := data["audits"]; ok {
+			if b, err := json.Marshal(raw); err == nil {
+				_ = json.Unmarshal(b, &s.audits)
+			}
+		}
+	}
+	s.invalidate()
+}
+
+// selectAudit 选中一个检查结果：拉报告全文；任务在跑就轮询。
+func (s *AppState) selectAudit(slug string) {
+	s.mu.Lock()
+	if s.auditPollStop != nil {
+		close(s.auditPollStop)
+		s.auditPollStop = nil
+	}
+	s.auditSelected = slug
+	s.auditDetail, s.auditDetailErr, s.auditJob = nil, "", nil
+	s.mu.Unlock()
+	s.invalidate()
+	go s.fetchAudit(slug)
+}
+
+func (s *AppState) fetchAudit(slug string) {
+	data, err := getAuditDetail(s.engineURL, slug)
+	s.mu.Lock()
+	if s.auditSelected != slug {
+		s.mu.Unlock()
+		return
+	}
+	if err != nil {
+		s.auditDetailErr = fmt.Sprintf("读检查结果失败：%v", err)
+		s.mu.Unlock()
+		s.invalidate()
+		return
+	}
+	if b, berr := json.Marshal(data); berr == nil {
+		var d AuditDetail
+		if json.Unmarshal(b, &d) == nil {
+			s.auditDetail = &d
+			s.auditDetailErr = ""
+		}
+	}
+	if raw, ok := data["job"]; ok && raw != nil {
+		if job, jerr := parseJob(raw); jerr == nil {
+			s.auditJob = job
+			if job.Status == "running" {
+				s.startAuditPoll(slug, job)
+			}
+		}
+	}
+	s.mu.Unlock()
+	s.invalidate()
+}
+
+// pickAndAudit 弹选文件夹 → 创建检查 → 选中它。调用方保证已持有 s.mu。
+func (s *AppState) pickAndAudit() {
+	s.mu.Lock()
+	if s.auditBusy {
+		s.mu.Unlock()
+		return
+	}
+	s.auditBusy = true
+	s.auditStatus = "选择要检查的项目文件夹…"
+	s.mu.Unlock()
+	s.invalidate()
+	go func() {
+		folder, err := pickFolder(s.engineURL)
+		if err != nil || folder == "" {
+			s.mu.Lock()
+			s.auditBusy = false
+			s.auditStatus = "已取消"
+			if err != nil {
+				s.auditStatus = "选文件夹失败：" + err.Error()
+			}
+			s.mu.Unlock()
+			s.invalidate()
+			return
+		}
+		s.mu.Lock()
+		s.auditStatus = "开始检查：" + folder
+		s.mu.Unlock()
+		s.invalidate()
+		data, err := createAudit(s.engineURL, folder)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.auditBusy = false
+		if err != nil {
+			s.auditStatus = "创建检查失败：" + err.Error()
+			s.invalidate()
+			return
+		}
+		slug, _ := data["slug"].(string)
+		s.auditStatus = ""
+		s.loadAudits()
+		if slug != "" {
+			s.selectAudit(slug)
+		}
+	}()
+}
+
+// rerunAudit 重新检查（沿用上次的判断）。
+func (s *AppState) rerunAudit(slug string) {
+	s.mu.Lock()
+	if s.auditBusy {
+		s.mu.Unlock()
+		return
+	}
+	s.auditBusy = true
+	s.auditStatus = "重新检查中…"
+	s.mu.Unlock()
+	s.invalidate()
+	go func() {
+		body, _ := json.Marshal(map[string]string{"mode": "recheck"})
+		data, err := postJSONData(s.engineURL, "/api/audits/"+url.PathEscape(slug)+"/run", string(body))
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.auditBusy = false
+		if err != nil {
+			s.auditStatus = "重新检查失败：" + err.Error()
+			s.invalidate()
+			return
+		}
+		s.auditStatus = ""
+		if raw, ok := data["job"]; ok {
+			if job, jerr := parseJob(raw); jerr == nil {
+				s.auditJob = job
+				if job.Status == "running" {
+					s.startAuditPoll(slug, job)
+				}
+			}
+		}
+		s.invalidate()
+	}()
+}
+
+// startAuditPoll 检查任务跑完前每 2 秒拉增量日志。调用方必须已持有 s.mu。
+func (s *AppState) startAuditPoll(slug string, job *JobInfo) {
+	if s.auditPollStop != nil {
+		close(s.auditPollStop)
+	}
+	stop := make(chan struct{})
+	s.auditPollStop = stop
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		last := job.LogCount
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			}
+			s.mu.Lock()
+			base := s.engineURL
+			s.mu.Unlock()
+			data, err := getJobUpdates(base, job.ID, last)
+			s.mu.Lock()
+			if s.auditSelected != slug {
+				s.mu.Unlock()
+				return
+			}
+			if err != nil {
+				s.mu.Unlock()
+				continue
+			}
+			upd, err := parseJob(data)
+			if err != nil {
+				s.mu.Unlock()
+				continue
+			}
+			upd.Logs = append(append([]string(nil), job.Logs...), upd.Logs...)
+			s.auditJob = upd
+			if upd.Status != "running" {
+				s.mu.Unlock()
+				s.loadAudits()
+				s.fetchAudit(slug)
+				return
+			}
+			last = upd.LogCount
+			s.mu.Unlock()
+			s.invalidate()
+		}
 	}()
 }
 

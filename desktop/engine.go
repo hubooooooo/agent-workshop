@@ -332,6 +332,32 @@ func getProductDetail(base, slug string) (map[string]any, error) {
 	return apiGet(base, "/api/products/"+url.PathEscape(slug))
 }
 
+// getAudits 拉检查结果列表。
+func getAudits(base string) (map[string]any, error) {
+	return apiGet(base, "/api/audits")
+}
+
+// getAuditDetail 读一个检查结果的完整内容。
+func getAuditDetail(base, slug string) (map[string]any, error) {
+	return apiGet(base, "/api/audits/"+url.PathEscape(slug))
+}
+
+// pickFolder 让引擎弹 macOS 选文件夹窗口，返回路径（取消返回空串）。
+func pickFolder(base string) (string, error) {
+	data, err := postJSONData(base, "/api/audits/pick-folder", "{}")
+	if err != nil {
+		return "", err
+	}
+	path, _ := data["path"].(string)
+	return path, nil
+}
+
+// createAudit 对一个项目目录创建检查。
+func createAudit(base, path string) (map[string]any, error) {
+	body, _ := json.Marshal(map[string]string{"path": path})
+	return postJSONData(base, "/api/audits", string(body))
+}
+
 // getJobUpdates 拉任务的增量日志（?since=N），返回任务的完整 dict。
 func getJobUpdates(base, id string, since int) (map[string]any, error) {
 	return apiGet(base, fmt.Sprintf("/api/jobs/%s?since=%d", url.PathEscape(id), since))

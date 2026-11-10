@@ -37,6 +37,7 @@ func sidebar(c *ui.Context) {
 		navClicked := display.List(c, display.ListProps{Items: []display.ListItem{
 			{Key: "products", Label: "产品", Icon: lucide.Boxes()},
 			{Key: "new", Label: "新建产品", Icon: lucide.Sparkles()},
+			{Key: "audits", Label: "项目检查", Icon: lucide.ScanSearch()},
 			{Key: "settings", Label: "模型设置", Icon: lucide.SlidersHorizontal()},
 		}, Active: navKeyOf(page)})
 		switch navClicked {
@@ -48,6 +49,11 @@ func sidebar(c *ui.Context) {
 			app.mu.Lock()
 			app.page = PageNew
 			app.mu.Unlock()
+		case "audits":
+			app.mu.Lock()
+			app.page = PageAudits
+			app.mu.Unlock()
+			go app.loadAudits()
 		case "settings":
 			app.mu.Lock()
 			app.page = PageSettings
@@ -101,6 +107,8 @@ func navKeyOf(page Page) string {
 		return "new"
 	case PageSettings:
 		return "settings"
+	case PageAudits:
+		return "audits"
 	default:
 		return "products"
 	}
@@ -116,6 +124,8 @@ func content(c *ui.Context) {
 		newProductView(c)
 	case PageSettings:
 		settingsView(c)
+	case PageAudits:
+		auditsView(c)
 	default:
 		productView(c)
 	}
@@ -503,6 +513,116 @@ func stepCard(c *ui.Context, step map[string]string) {
 			ui.Text(c, "结果："+step["result"]).FontSize(12).TextColor(tk.TextSecondary)
 		}
 	})
+}
+
+// auditsView 项目检查页：左列表 + 右报告。
+func auditsView(c *ui.Context) {
+	tk := theme.TokensOf(c)
+	app.mu.Lock()
+	audits := append([]AuditSummary(nil), app.audits...)
+	auditsErr := app.auditsErr
+	selected := app.auditSelected
+	detail := app.auditDetail
+	detailErr := app.auditDetailErr
+	job := app.auditJob
+	busy := app.auditBusy
+	status := app.auditStatus
+	app.mu.Unlock()
+
+	ui.Column(c).Grow(1).Basis(0).MinWidth(0).Margin(8, 8, 8, 0).
+		Radius(tk.BorderRadiusLG).Background(tk.BgContainer).Border(1, tk.Border).Clip().
+		Children(func() {
+			ui.Row(c).Height(46).Shrink(0).Padding(16, 8).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, "项目检查").FontSize(15).Bold()
+					action.Button(c, "选文件夹检查", action.ButtonProps{Variant: action.Primary, Size: theme.Small}).
+						OnClick(func() { go app.pickAndAudit() })
+					if selected != "" && detail != nil {
+						action.Button(c, "重新检查", action.ButtonProps{Size: theme.Small}).
+							OnClick(func() { go app.rerunAudit(selected) })
+					}
+					if busy || status != "" {
+						ui.Text(c, status).FontSize(12).TextColor(tk.TextSecondary)
+					}
+				})
+			})
+			ui.Row(c).Grow(1).Basis(0).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+				// 左：检查结果列表
+				ui.Column(c).Width(248).Shrink(0).Padding(12, 8).Gap(4).Children(func() {
+					if auditsErr != "" {
+						ui.Text(c, "⚠ "+auditsErr).FontSize(12).TextColor(tk.ErrorText)
+					}
+					items := make([]display.ListItem, 0, len(audits))
+					for _, a := range audits {
+						desc := a.Verdict
+						if !a.Finished {
+							desc = "检查中…"
+						}
+						if desc == "" {
+							desc = a.Root
+						}
+						items = append(items, display.ListItem{
+							Key: a.Slug, Label: a.Name, Description: desc, Icon: lucide.FolderSearch(),
+							Extra: fmt.Sprintf("%.0f%%", a.Completion*100),
+						})
+					}
+					if len(items) == 0 {
+						ui.Text(c, "还没有检查过项目。点上面「选文件夹检查」。").FontSize(12).TextColor(tk.TextSecondary)
+					}
+					clicked := display.List(c, display.ListProps{Items: items, Active: selected})
+					if clicked != "" {
+						go app.selectAudit(clicked)
+					}
+				})
+				// 右：报告
+				ui.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
+					if selected == "" {
+						ui.Column(c).Grow(1).Children(func() {
+							ui.Text(c, "选一个检查结果看差距报告。").TextColor(tk.TextSecondary).Padding(16, 12)
+						})
+						return
+					}
+					if job != nil && job.Status != "" {
+						ui.Column(c).Shrink(0).Padding(8, 12, 0, 12).Children(func() {
+							jobBlock(c, job)
+						})
+					}
+					if detailErr != "" {
+						ui.Text(c, "⚠ "+detailErr).TextColor(tk.ErrorText).Padding(16, 12)
+						return
+					}
+					if detail == nil {
+						ui.Text(c, "读取中…").TextColor(tk.TextSecondary).Padding(16, 12)
+						return
+					}
+					// 摘要行
+					ui.Row(c).Shrink(0).Padding(4, 12).Gap(6).AlignItems(ui.Center).Children(func() {
+						if detail.Verdict != "" {
+							display.Tag(c, detail.Verdict, display.TagProps{Color: display.TagInfo, Size: theme.Small})
+						}
+						display.Tag(c, fmt.Sprintf("缺失 %d", detail.Missing),
+							display.TagProps{Color: display.TagError, Size: theme.Small})
+						display.Tag(c, fmt.Sprintf("薄弱 %d", detail.Weak),
+							display.TagProps{Color: display.TagWarning, Size: theme.Small})
+						if detail.Finished {
+							ui.Text(c, fmt.Sprintf("读过 %d 个文件 · %d 次调用", detail.FilesSeen, detail.Calls)).
+								FontSize(12).TextColor(tk.TextSecondary)
+						}
+					})
+					ui.Scroll(c).Grow(1).Basis(0).Children(func() {
+						ui.Column(c).Padding(16, 24, 16, 16).Gap(18).MaxWidth(760).Children(func() {
+							if detail.Report != "" {
+								markdown.Markdown(c, detail.Report, markdown.MarkdownProps{})
+							}
+							if detail.SuggestedPRD != "" {
+								sectionTitle(c, "本该有的 PRD")
+								markdown.Markdown(c, detail.SuggestedPRD, markdown.MarkdownProps{})
+							}
+						})
+					})
+				})
+			})
+		})
 }
 
 // newProductView 对话式新建产品：追问流 + 确认卡片 + 快捷回复。
