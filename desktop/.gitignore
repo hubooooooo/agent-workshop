@@ -2,3 +2,4 @@
 /agent-workshop-desktop
 /desktop
 *.app
+/dist/

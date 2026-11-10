@@ -151,23 +151,32 @@ func (s *AppState) stopEngine() {
 
 // -- 仓库定位 ----------------------------------------------------------------
 
-// findRepoRoot 从当前目录往上找带 blueprint/ 和 .venv/ 的仓库根。
-// 开发时用 `go run ./desktop` 在仓库里跑，二进制分发时放在仓库根附近即可。
+// findRepoRoot 先按应用自身所在位置（打包成 .app 后从 Finder 启动时 cwd 是 /），
+// 再按当前目录，向上找带 blueprint/ 和 .venv/ 的仓库根。
 func findRepoRoot() (string, error) {
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	for {
-		if isRepoRoot(dir) {
-			return dir, nil
+	starts := []string{}
+	if exe, err := os.Executable(); err == nil {
+		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+			starts = append(starts, filepath.Dir(resolved))
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", fmt.Errorf("没找到引擎目录（blueprint/ 与 .venv/），请把本应用放在 agent-workshop 仓库里运行")
-		}
-		dir = parent
 	}
+	if wd, err := os.Getwd(); err == nil {
+		starts = append(starts, wd)
+	}
+	for _, start := range starts {
+		dir := start
+		for {
+			if isRepoRoot(dir) {
+				return dir, nil
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	return "", fmt.Errorf("没找到引擎目录（blueprint/ 与 .venv/），把本应用放进 agent-workshop 仓库里运行")
 }
 
 func isRepoRoot(dir string) bool {
