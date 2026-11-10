@@ -30,6 +30,8 @@ def friendly_error(exc: BaseException) -> str:
         return f"请求太频繁或额度用完了，稍等一会儿再试。{RESUME_HINT}"
     if name == "NotFoundError":
         return "模型名不存在，请到「模型设置」检查模型名。"
+    if name == "OpenAIError":
+        return f"{exc}（OpenAI 格式接口报错）。{RESUME_HINT}"
     if name in ("InternalServerError", "ServiceUnavailableError", "OverloadedError") or (
             name == "APIStatusError" and getattr(exc, "status_code", 0) >= 500):
         return f"模型服务那边暂时出错了（{getattr(exc, 'status_code', '') or name}），不是你的问题。稍等一会儿，{RESUME_HINT}"

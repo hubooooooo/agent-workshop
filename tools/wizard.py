@@ -155,9 +155,8 @@ def do_init() -> None:
     name = ask_required("给产品起个名字：")
     idea = ask_required("一句话说说你的想法：")
     run(["init", name, idea, "--plan"])
-    import re as _re
-    slug = _re.sub(r"[^\w一-鿿-]+", "-", name.strip())[:40].strip("-")
-    after_run(ROOT / "out" / slug / "方案.md")
+    from blueprint.workspace import slugify      # 和引擎同一个实现，别处改了这里不会漂移
+    after_run(ROOT / "out" / slugify(name) / "方案.md")
     print("\n下一步：回答方案里的待确认问题，然后让 AI 按方案把代码骨架写到 skeleton/ 里。")
 
 
