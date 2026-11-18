@@ -128,3 +128,77 @@ def test_old_skill_location_is_gone_and_docs_point_to_plugin():
     guide = (ROOT / "使用引导.md").read_text(encoding="utf-8")
     assert "plugins/agent-workshop/skills/agent-builder/scripts/init_agent.py" in guide
     assert "skills/agent-builder/" not in guide.replace("plugins/agent-workshop/skills/agent-builder/", "")
+
+
+def _load_tool(name):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, ROOT / "tools" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_manual_selection_rules_use_the_scripts_exact_wording():
+    """不能跑脚本的 AI 按 components.md 第 7 节手工选型；那里的措辞必须和脚本输出一字不差。"""
+    text = (SKILLS / "agent-prd" / "references" / "components.md").read_text(encoding="utf-8")
+    manual = text[text.index("## 7. 手工选型规则"):]
+    script = SCRIPT.read_text(encoding="utf-8")
+    for phrase in ("（一切基础，恒选）", "输入未说明：", "输入表明不需要：", "需归一到单一循环",
+                   "二期集成时需要", "可选组件不足 3 个，直接在 loop 里挂接即可",
+                   "✅ 必选", "⏸ 二期", "❓ 待确认", "❌ 放弃", "| 组件 | 选否 | 理由 |"):
+        assert phrase in manual and phrase in script, phrase
+    for value, decision in (("yes", "必选"), ("later", "二期"), ("unknown", "待确认"), ("no", "放弃")):
+        assert f'"{value}": "{decision}"' in script
+        assert re.search(rf"`{value}`.*\| {decision} \|", manual), value
+
+
+def test_agent_prd_does_not_depend_on_claude_code_or_agent_builder():
+    """学生可能用任何 AI 工具：技能正文不能依赖 Claude Code 才有的变量，也不能假定装了 agent-builder。"""
+    body = (SKILLS / "agent-prd" / "SKILL.md").read_text(encoding="utf-8")
+    assert "${CLAUDE_" not in body
+    assert "没装就把两份文件交给" in body                         # 没装 agent-builder 时的去处
+    assert "既不能写文件也不能生成文件" in body                   # 纯聊天环境的交付方式
+    meta = _frontmatter(SKILLS / "agent-prd" / "SKILL.md")
+    assert meta["license"] == "MIT" and 0 < len(meta["compatibility"]) <= 500
+
+
+def test_package_skill_builds_identical_skill_and_zip(tmp_path):
+    import zipfile
+    mod = _load_tool("package_skill")
+    first = mod.build("agent-prd", tmp_path / "a")
+    again = mod.build("agent-prd", tmp_path / "b")
+    assert [p.name for p in first] == ["agent-prd.skill", "agent-prd.zip"]
+    assert first[0].read_bytes() == first[1].read_bytes() == again[0].read_bytes()   # 内容相同、可复现
+    names = zipfile.ZipFile(first[0]).namelist()
+    assert "agent-prd/SKILL.md" in names and "agent-prd/README.md" in names
+    assert "agent-prd/scripts/select_components.py" in names
+    assert not any("/evals/" in n or "__pycache__" in n for n in names)
+    body = (SKILLS / "agent-prd" / "SKILL.md").read_text(encoding="utf-8")
+    for link in re.findall(r"\]\(((?:references|scripts)/[^)#]+)\)", body):
+        assert f"agent-prd/{link}" in names, link
+
+
+def test_package_skill_rejects_bad_frontmatter(tmp_path, monkeypatch):
+    mod = _load_tool("package_skill")
+    bad = tmp_path / "skills" / "bad-skill"
+    bad.mkdir(parents=True)
+    (bad / "SKILL.md").write_text("---\nname: bad-skill\ndescription: x\nversion: 1\n---\n\n正文\n", encoding="utf-8")
+    monkeypatch.setattr(mod, "SKILLS_DIR", tmp_path / "skills")
+    with pytest.raises(ValueError, match="规范外的字段"):
+        mod.build("bad-skill", tmp_path / "out")
+
+
+def test_student_package_ships_plugin_skills_and_built_archives():
+    """回归：agent-builder 移进 plugins/ 后，学生包只收 skills/，两个技能都漏了。"""
+    mod = _load_tool("package_student")
+    names = {p.relative_to(ROOT).as_posix() for p in mod.collect_files(ROOT)}
+    for skill in ("agent-prd", "agent-builder"):
+        skill_dir = SKILLS / skill
+        for path in skill_dir.rglob("*"):
+            rel = path.relative_to(ROOT).as_posix()
+            if path.is_file() and "/evals/" not in rel and "__pycache__" not in rel:
+                assert rel in names, rel
+    assert ".claude-plugin/marketplace.json" in names
+    assert "tools/package_skill.py" in names
+    archives = mod.skill_archives(ROOT)
+    assert set(archives) == {"agent-prd.skill", "agent-prd.zip"}

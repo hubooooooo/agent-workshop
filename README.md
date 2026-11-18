@@ -179,6 +179,8 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
 ```
 
+**不用 Claude Code？** `agent-prd` 也能单独用在 claude.ai、Codex、Cursor 等任何 AI 工具里，甚至普通聊天网页：各工具的装法见 [agent-prd 使用说明](plugins/agent-workshop/skills/agent-prd/README.md)。打好的 `agent-prd.skill`（给 claude.ai 上传）和 `agent-prd.zip`（给其他工具解压）随学生包一起发，也可以自己运行 `.venv/bin/python tools/package_skill.py` 生成到 `dist/`。
+
 ### 💻 方式三：命令行
 
 ```sh

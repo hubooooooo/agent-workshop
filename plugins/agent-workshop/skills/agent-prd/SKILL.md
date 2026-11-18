@@ -1,6 +1,8 @@
 ---
 name: agent-prd
-description: 把一个 AI Agent 产品点子，通过对话追问，整理成一份 AI 能看懂的需求文档（PRD.md）和技术方案（方案.md），作为后续开发的输入。当用户说「我有个点子 / 想法，想做一个 AI 助手 / 智能体 / Agent / 机器人」「帮我把这个想法变成需求文档」「想做个能自动帮我…的 AI」「帮我写个 Agent 的 PRD / 技术方案」，或者描述了一个想让 AI 自己理解、调工具、做判断、交付结果的产品时，都要使用这个技能，即使用户没说「PRD」「Agent」这些词、只是随口说了个模糊的想法。也用于回答这份方案里的待确认问题、给已有的 PRD 加新需求。不负责写代码：方案确认后的开发交给 agent-builder 技能。
+license: MIT
+compatibility: 适用于任何能读取本文件夹的 AI 工具（Claude Code、claude.ai、Codex、Cursor 等）。能运行 Python 3.8+ 时用自带脚本做组件选型，不能运行代码时按 references/components.md 的规则手工推导。不需要网络和 API Key。
+description: 把一个 AI Agent 产品点子，通过对话追问，整理成一份 AI 能看懂的需求文档（PRD.md）和技术方案（方案.md），作为后续开发的输入。当用户说「我有个点子 / 想法，想做一个 AI 助手 / 智能体 / Agent / 机器人」「帮我把这个想法变成需求文档」「想做个能自动帮我…的 AI」「帮我写个 Agent 的 PRD / 技术方案」，或者描述了一个想让 AI 自己理解、调工具、做判断、交付结果的产品时，都要使用这个技能，即使用户没说「PRD」「Agent」这些词、只是随口说了个模糊的想法。也用于回答这份方案里的待确认问题、给已有的 PRD 加新需求。不负责写代码：方案确认后的开发交给开发环节（如 agent-builder 技能）。
 ---
 
 # agent-prd：从一个点子到 PRD 和技术方案
@@ -12,7 +14,7 @@ description: 把一个 AI Agent 产品点子，通过对话追问，整理成一
 
 这套方法来自开源项目 Agent 工坊（github.com/hubooooooo/agent-workshop）。它的核心立场是：**宁可留下待确认的问题，也不替用户编需求**。一份把空白都填满、读起来很完整的 PRD，如果其中一半是你猜的，会把后面整个开发带偏；而一份老实标出「这里还没想清楚」的 PRD，用户补几个回答就能用。所以写的时候，每句话都要能追溯到用户说过的话，追溯不到的就标「待确认」。
 
-**这个技能不写代码。** 方案交付后，开发交给 `agent-builder` 技能。即使用户催促「直接帮我做出来」，也先把这两份文件做完、让他确认，再建议他用 agent-builder 进入开发。
+**这个技能不写代码。** 方案交付后就是开发环节：装了 `agent-builder` 技能就用它，没装就把两份文件交给任何 AI 编程工具，让它照方案开发。即使用户催促「直接帮我做出来」，也先把这两份文件做完、让他确认，再进入开发。
 
 ## 流程
 
@@ -32,24 +34,30 @@ description: 把一个 AI Agent 产品点子，通过对话追问，整理成一
 
 按 [references/prd-template.md](references/prd-template.md) 写。
 
-文件放在用户当前项目里的 `docs/{产品名}/` 下（目录不存在就创建）。用户指定了别的位置就听他的。开始写之前告诉用户文件会放在哪。
+文件放在哪，看你所在的环境（用户指定了位置就听他的），开始写之前告诉用户：
+
+- **能读写用户项目文件的编程工具**（Claude Code、Codex、Cursor 等）：写进项目里的 `docs/{产品名}/PRD.md` 和 `docs/{产品名}/方案.md`，目录不存在就创建。
+- **能生成文件、但没有用户项目的聊天环境**（如 claude.ai）：生成 `PRD.md` 和 `方案.md` 两个文件，交给用户下载。
+- **既不能写文件也不能生成文件**：把两份文档完整地输出在对话里，每份放进一个 Markdown 代码块，代码块前一行写文件名，并告诉用户分别复制保存为 `PRD.md` 和 `方案.md`。内容太长时分两条消息发，不要删减。
 
 ### 4. 写 方案.md
 
 按 [references/plan-template.md](references/plan-template.md) 的四步推导，需要组件、特征、七层架构的定义时查 [references/components.md](references/components.md)。
 
-组件选型用脚本，不要自己判断选不选：
+组件选型按固定规则来，不要凭感觉判断选不选。能运行代码时用本技能目录下的 `scripts/select_components.py`（只用 Python 标准库，不联网）：
 
 ```bash
-# 先看 14 个特征问题
-python3 ${CLAUDE_SKILL_DIR}/scripts/select_components.py --features
+# 先看 14 个特征问题（路径换成本技能目录的实际位置）
+python3 <本技能目录>/scripts/select_components.py --features
 # 逐个判断后，把判断通过标准输入交给脚本，拿到选型表（不用在用户项目里留文件）
-python3 ${CLAUDE_SKILL_DIR}/scripts/select_components.py - <<'EOF'
-{"destructive_ops": {"value": "yes", "evidence": "要替用户发微信消息"}, "scheduled": {"value": "no", "evidence": "用户主动发起"}, ...}
-EOF
+python3 <本技能目录>/scripts/select_components.py - <<'JSON'
+{"destructive_ops": {"value": "yes", "evidence": "要替用户发微信消息"}, "scheduled": {"value": "no", "evidence": "用户主动发起"}}
+JSON
 ```
 
-脚本在本技能目录的 `scripts/` 下；`${CLAUDE_SKILL_DIR}` 没有被替换成路径时，自己找到这个技能所在的目录。脚本是固定规则：同样的特征判断永远得到同样的选型，用户之后改需求时才能看清「哪里变了、为什么变」。机器上没有 Python 时，按 components.md 第 3、4 节的规则手工推导，并在方案的「生成方式」里注明。
+不能运行代码（或没有 Python）时，按 [references/components.md](references/components.md) 第 7 节「手工选型规则」逐条推导，结果和脚本完全一样，并在方案的「生成方式」里注明是手工推导。
+
+为什么坚持固定规则：同样的特征判断永远得到同样的选型，用户之后改需求时才能看清「哪里变了、为什么变」；凭感觉选，换一次对话选型就变了。
 
 想看一份完整方案长什么样，参考 [references/example-plan.md](references/example-plan.md)（引擎的真实输出，内容是另一个产品）。
 
@@ -61,7 +69,7 @@ EOF
 - 两份文件在哪；
 - 这个 Agent 第一版要做哪几件事、选了哪几个关键机制（一两句话，不要堆术语）；
 - **最要紧的 3 个待确认问题**，请他先回答；
-- 下一步：回答问题来补全方案，或者方案没问题了，就用 agent-builder 进入开发。
+- 下一步：回答问题来补全方案；方案没问题了，就进入开发（装了 agent-builder 技能就用它，没装就把两份文件交给 AI 编程工具，说「按 PRD.md 和 方案.md 开发」）。
 
 ## 之后的轮次
 
