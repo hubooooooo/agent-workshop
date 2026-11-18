@@ -27,13 +27,13 @@ claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
 
 ### claude.ai 网页版 / Claude 桌面或手机 App
 
-1. 下载 `agent-prd.skill`。
+1. 到[下载页](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd)下载 `agent-prd.skill`。
 2. 在设置里找到「技能（Skills）」，上传这个文件并打开它。需要先打开「代码执行」功能。
 3. 新开一个对话，说出你的想法。
 
 ### 其他 AI 编程工具（Codex、Cursor、Trae、通义灵码等）
 
-1. 下载 `agent-prd.zip` 并解压，把 `agent-prd` 文件夹放进你的项目文件夹。
+1. 到[下载页](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd)下载 `agent-prd.zip` 并解压，把 `agent-prd` 文件夹放进你的项目文件夹。
 2. 对 AI 说：
 
    ```text

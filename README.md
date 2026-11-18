@@ -11,17 +11,19 @@
 
 一个本地运行的 Agent 产品推导引擎。它不替你写代码，而是先把「该做什么、该用哪些机制、哪里还没想清楚」推导清楚，交给你自己的 AI 编程工具去写骨架，再对照 PRD 验收，陪你一轮轮把骨架做对。
 
+不想装环境？也可以只装 **[agent-prd 技能](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd)**：在你自己的 AI 工具里（Claude Code、claude.ai、Codex、Cursor……）用对话把点子整理成 PRD 和技术方案，不用 Python，也不用另配 API Key。
+
 [![Test](https://github.com/hubooooooo/agent-workshop/actions/workflows/test.yml/badge.svg)](https://github.com/hubooooooo/agent-workshop/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/downloads/)
 
-[教学版和网页版](#教学版和网页版) · [快速开始](#快速开始) · [先看效果](#先看效果) · [使用引导](使用引导.md) · [教程视频](https://www.bilibili.com/video/BV17RtD61ETm/)
+[版本与下载](#版本与下载) · [快速开始](#快速开始) · [先看效果](#先看效果) · [使用引导](使用引导.md) · [教程视频](https://www.bilibili.com/video/BV17RtD61ETm/)
 
 </div>
 
 ---
 
-## 教学版和网页版
+## 版本与下载
 
 > **上课的同学请下载教学版**（下表第一行的链接），不要下载本页的网页版；课堂流程、结课检查表都写在教学版里。
 
@@ -29,9 +31,11 @@
 <tr><th align="left" width="16%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">名称</th><th align="left" width="40%">是什么</th><th align="left" width="22%">适合</th><th align="left" width="22%">下载</th></tr>
 <tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/teaching">下载</a> · <a href="https://github.com/hubooooooo/agent-workshop/tree/v1-maint">浏览源码</a></td></tr>
 <tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a></td></tr>
+<tr><td><b>AI 技能版</b></td><td>一个叫 agent-prd 的技能：装进你自己的 AI 工具，对话追问后写出 <code>PRD.md</code> 和 <code>方案.md</code>。不用下载项目、不用 Python、不用另配 API Key</td><td>已经在用 AI 工具的人，想最快拿到需求文档和技术方案</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd">下载</a> · <a href="plugins/agent-workshop/skills/agent-prd/README.md">各工具装法</a></td></tr>
+<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生重画，用同一个引擎；还没有打包好的安装包</td><td>想试新界面、会自己打包的开发者（需要 Go）</td><td><a href="desktop/README.md">从源码打包</a></td></tr>
 </table>
 
-两个版本都下载到自己电脑上运行，不是网站。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-workshop/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
+教学版、网页版、桌面版都下载到自己电脑上运行，不是网站；AI 技能版装进你正在用的 AI 工具里，不用下载整个项目。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-workshop/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
 
 ## 它能帮你做什么
 
@@ -101,7 +105,7 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 
 <table>
 <tr><th align="left" width="20%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">准备</th><th align="left" width="28%">用来做什么</th><th align="left" width="52%">什么时候需要</th></tr>
-<tr><td>模型 API Key</td><td>引擎推导方案、升版、验收</td><td>所有方式都要。推荐 <a href="https://platform.deepseek.com">DeepSeek</a>，便宜且国内可直连，配置方法见下一节</td></tr>
+<tr><td>模型 API Key</td><td>引擎推导方案、升版、验收</td><td>方式一到方式三都要；只用下面的 AI 技能版不需要。推荐 <a href="https://platform.deepseek.com">DeepSeek</a>，便宜且国内可直连，配置方法见下一节</td></tr>
 <tr><td>能读写本地文件的 AI 编程工具</td><td>按方案把代码骨架写进 <code>skeleton/</code></td><td>要代码时才需要，例如 Codex、Claude Code、Kimi Code、pi。只要方案或差距报告可以不装</td></tr>
 </table>
 
@@ -112,6 +116,20 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 先读这个目录里的《使用引导.md》，按「产品循环」工作。
 产品 酒馆搭子 的方案已经在 out/酒馆搭子/方案.md，请按方案把代码骨架写进 out/酒馆搭子/skeleton/。
 ```
+
+### 🧩 不装引擎：在你的 AI 工具里装 agent-prd 技能
+
+不用下载这个项目，不用装 Python，也不用另配 API Key：推导由你正在用的 AI 完成。说出点子后它一次问一个问题，问清楚后写出 `PRD.md` 和 `方案.md`。
+
+用 Claude Code，一条命令装好（会同时装上负责开发环节的 agent-builder）：
+
+```bash
+claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
+```
+
+用 claude.ai、Codex、Cursor 或普通聊天网页：到 [AI 技能版下载页](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd) 下载 `agent-prd.skill`（给 claude.ai 上传）或 `agent-prd.zip`（给其他工具解压），各工具的装法见 [agent-prd 使用说明](plugins/agent-workshop/skills/agent-prd/README.md)。
+
+和引擎的差别：技能版没有独立模型审稿、网页界面和项目检查，交付前由 AI 按同一套标准自查；两边产出的 PRD 和方案格式相同，可以互相接着用。
 
 ### 🍎 方式一：Mac 双击（零命令行）
 
@@ -172,14 +190,6 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 ```
 
 > 普通网页聊天窗口读不了本地文件，只给路径是不够的。
-
-**用 Claude Code 的话，装插件更省事**：不用下载这个仓库，也不用配 Python 和 API Key，一条命令装好，之后直接在对话里说点子即可，详见 [plugins/agent-workshop](plugins/agent-workshop/README.md)：
-
-```bash
-claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
-```
-
-**不用 Claude Code？** `agent-prd` 也能单独用在 claude.ai、Codex、Cursor 等任何 AI 工具里，甚至普通聊天网页：各工具的装法见 [agent-prd 使用说明](plugins/agent-workshop/skills/agent-prd/README.md)。打好的 `agent-prd.skill`（给 claude.ai 上传）和 `agent-prd.zip`（给其他工具解压）随学生包一起发，也可以自己运行 `.venv/bin/python tools/package_skill.py` 生成到 `dist/`。
 
 ### 💻 方式三：命令行
 
@@ -350,11 +360,12 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 <tr><td><a href="https://github.com/hubooooooo/agent-workshop/tree/main/web">web/</a></td><td>浏览器界面源码（React + assistant-ui），构建产物提交在 <code>blueprint/web/static/</code></td></tr>
 <tr><td><code>s01</code>–<code>s17</code></td><td>17 个组件的说明、参考实现与图示</td></tr>
 <tr><td><a href="common/">common/</a></td><td>组件参考实现共用的启动层</td></tr>
+<tr><td><a href="desktop/">desktop/</a></td><td>桌面版（macOS 原生界面，Go + Lobe MyGo）：拉起同一个引擎，走网页版的接口</td></tr>
 <tr><td><a href="scaffold/">scaffold/</a> · <a href="skills/">skills/</a></td><td>项目模板；s07 技能加载用的示例技能</td></tr>
-<tr><td><a href="plugins/agent-workshop/">plugins/agent-workshop/</a></td><td>Claude Code 插件：agent-prd（点子 → PRD 与技术方案）、agent-builder（按方案开发）</td></tr>
+<tr><td><a href="plugins/agent-workshop/">plugins/agent-workshop/</a></td><td>AI 技能版：agent-prd（点子 → PRD 与技术方案，任何 AI 工具可用）、agent-builder（按方案开发），以 Claude Code 插件形式发布</td></tr>
 <tr><td><a href="docs/">docs/</a></td><td>入门指南、真实输出示例、维护手册</td></tr>
 <tr><td><a href="evals/">evals/</a> · <a href="tests/">tests/</a></td><td>特征判断题库、反向检查题库（含两道关键词陷阱题）与回归测试</td></tr>
-<tr><td><a href="tools/">tools/</a></td><td>双击向导及其环境脚本、示例刷新、学生打包、测模型能否调用工具</td></tr>
+<tr><td><a href="tools/">tools/</a></td><td>双击向导及其环境脚本、示例刷新、学生打包、技能打包、测模型能否调用工具</td></tr>
 </table>
 
 ## 开发与维护
@@ -365,7 +376,9 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 .venv/bin/python -m blueprint eval --real     # 真实模型特征一致率
 .venv/bin/python -m blueprint eval --real-audit --repeat 3   # 真实模型跑反向检查题库
 .venv/bin/python tools/refresh_examples.py    # 改提示词后重新生成示例
-.venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-student.zip
+.venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-student.zip（含打好的 agent-prd）
+.venv/bin/python tools/package_skill.py       # 生成 dist/agent-prd.skill 和 dist/agent-prd.zip
+claude plugin validate ./plugins/agent-workshop   # 检查插件；改了技能记得升 plugin.json 的 version
 ```
 
 改规则、换模型、调提示词前先看 [维护手册](docs/维护手册.md)，题库口径见 [evals/README.md](evals/README.md)，提交 PR 前看 [贡献指南](CONTRIBUTING.md)。
@@ -375,6 +388,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 <table>
 <tr><th align="left" width="46%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">我想…</th><th align="left" width="54%">看这里</th></tr>
 <tr><td>第一次用</td><td><a href="使用引导.md">使用引导.md</a></td></tr>
+<tr><td>不装引擎，在自己的 AI 工具里出 PRD 和方案</td><td><a href="plugins/agent-workshop/skills/agent-prd/README.md">agent-prd 使用说明</a></td></tr>
 <tr><td>只有一个模糊想法，不知道怎么描述</td><td><a href="docs/beginner-guide.md">小白入门指南</a></td></tr>
 <tr><td>看一份完整方案和差距报告</td><td><a href="docs/examples/README.md">真实输出示例</a></td></tr>
 <tr><td>理解推导方法</td><td><a href="BLUEPRINT.md">BLUEPRINT.md</a></td></tr>
