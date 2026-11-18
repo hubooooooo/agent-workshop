@@ -11,29 +11,17 @@
 
 > 只适合 **AI Agent 类**的点子：AI 要自己理解你的话、去查资料或调用工具、做判断、交出结果（客服、助理、自动整理、审核、陪练……）。普通网站或 App 用它会不太合适，它会先提醒你。
 
-## 按你用的 AI 工具选一种装法
+## 按你用的 AI 工具选一种用法
 
-### Claude Code
+到[下载页](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd)下载文件：`agent-prd.skill` 给支持上传技能文件的工具，`agent-prd.zip` 给其他所有情况（解压后得到 `agent-prd` 文件夹）。两个文件内容一样。
 
-在终端里运行一条命令（会同时装上负责开发环节的 agent-builder）：
+### AI 工具支持技能（Skills）
 
-```bash
-claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
-```
+上传 `agent-prd.skill`，或者把 `agent-prd` 文件夹放进工具的技能目录（具体位置看你所用工具的说明）。装好后新开一个对话，直接说出你的想法，它会自动开始。
 
-或者只要这一个技能：把整个 `agent-prd` 文件夹复制到 `~/.claude/skills/` 下面。
+### AI 编程工具（能读写项目文件的那种）
 
-装好后直接说出你的想法，它会自动开始。
-
-### claude.ai 网页版 / Claude 桌面或手机 App
-
-1. 到[下载页](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd)下载 `agent-prd.skill`。
-2. 在设置里找到「技能（Skills）」，上传这个文件并打开它。需要先打开「代码执行」功能。
-3. 新开一个对话，说出你的想法。
-
-### 其他 AI 编程工具（Codex、Cursor、Trae、通义灵码等）
-
-1. 到[下载页](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd)下载 `agent-prd.zip` 并解压，把 `agent-prd` 文件夹放进你的项目文件夹。
+1. 把 `agent-prd` 文件夹放进你的项目文件夹。
 2. 对 AI 说：
 
    ```text

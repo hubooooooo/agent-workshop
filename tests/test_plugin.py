@@ -202,3 +202,11 @@ def test_student_package_ships_plugin_skills_and_built_archives():
     assert "tools/package_skill.py" in names
     archives = mod.skill_archives(ROOT)
     assert set(archives) == {"agent-prd.skill", "agent-prd.zip"}
+
+
+def test_downloadable_skill_is_vendor_neutral():
+    """agent-prd 作为通用技能发布：随 .skill / .zip 分发的文件里不出现具体厂商的产品名。"""
+    mod = _load_tool("package_skill")
+    for path in mod.skill_files(SKILLS / "agent-prd"):
+        text = path.read_text(encoding="utf-8")
+        assert "claude" not in text.lower(), path.relative_to(ROOT)
