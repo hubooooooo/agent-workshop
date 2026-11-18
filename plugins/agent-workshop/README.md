@@ -59,7 +59,7 @@ AI 会一次问你一件事，问清楚后整理成草稿给你确认，确认�
 
 ## 不用 Claude Code 也能用
 
-`agent-prd` 是一个独立的技能文件夹，不依赖插件。claude.ai、Codex、Cursor 等其他 AI 工具，甚至普通聊天网页的用法，见 [skills/agent-prd/README.md](skills/agent-prd/README.md)。
+`agent-prd` 是一个独立的技能文件夹，不依赖插件，打好的文件在[下载页](https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd)。claude.ai、Codex、Cursor 等其他 AI 工具，甚至普通聊天网页的用法，见 [skills/agent-prd/README.md](skills/agent-prd/README.md)。
 
 ## 只适合 Agent 类产品
 
