@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: vague-idea-asks-first
+expected_outcome: |
+  The assistant recognizes this as an Agent product idea that is too vague, asks exactly one plain-language question with a concrete example answer, mentions that 'not sure' is an acceptable answer, and does not write PRD.md or 方案.md yet.

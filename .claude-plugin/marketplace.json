@@ -1,0 +1,14 @@
+{
+  "name": "agent-workshop",
+  "description": "Agent 工坊的 Claude Code 插件",
+  "owner": {
+    "name": "hubooooooo"
+  },
+  "plugins": [
+    {
+      "name": "agent-workshop",
+      "source": "./plugins/agent-workshop",
+      "description": "从一个点子到 AI Agent 的需求文档、技术方案和开发：agent-prd 负责对话追问并产出 PRD.md 与 方案.md，agent-builder 负责按方案开发。"
+    }
+  ]
+}

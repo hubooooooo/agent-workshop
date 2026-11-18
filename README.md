@@ -173,6 +173,12 @@ agent 需要模型支持工具调用。模型不支持、调用出错或费用�
 
 > 普通网页聊天窗口读不了本地文件，只给路径是不够的。
 
+**用 Claude Code 的话，装插件更省事**：不用下载这个仓库，也不用配 Python 和 API Key，一条命令装好，之后直接在对话里说点子即可，详见 [plugins/agent-workshop](plugins/agent-workshop/README.md)：
+
+```bash
+claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
+```
+
 ### 💻 方式三：命令行
 
 ```sh
@@ -342,7 +348,8 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 <tr><td><a href="https://github.com/hubooooooo/agent-workshop/tree/main/web">web/</a></td><td>浏览器界面源码（React + assistant-ui），构建产物提交在 <code>blueprint/web/static/</code></td></tr>
 <tr><td><code>s01</code>–<code>s17</code></td><td>17 个组件的说明、参考实现与图示</td></tr>
 <tr><td><a href="common/">common/</a></td><td>组件参考实现共用的启动层</td></tr>
-<tr><td><a href="scaffold/">scaffold/</a> · <a href="skills/">skills/</a></td><td>项目模板；构建 Agent、代码检查等技能</td></tr>
+<tr><td><a href="scaffold/">scaffold/</a> · <a href="skills/">skills/</a></td><td>项目模板；s07 技能加载用的示例技能</td></tr>
+<tr><td><a href="plugins/agent-workshop/">plugins/agent-workshop/</a></td><td>Claude Code 插件：agent-prd（点子 → PRD 与技术方案）、agent-builder（按方案开发）</td></tr>
 <tr><td><a href="docs/">docs/</a></td><td>入门指南、真实输出示例、维护手册</td></tr>
 <tr><td><a href="evals/">evals/</a> · <a href="tests/">tests/</a></td><td>特征判断题库、反向检查题库（含两道关键词陷阱题）与回归测试</td></tr>
 <tr><td><a href="tools/">tools/</a></td><td>双击向导及其环境脚本、示例刷新、学生打包、测模型能否调用工具</td></tr>
