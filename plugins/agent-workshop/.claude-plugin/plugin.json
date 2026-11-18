@@ -1,0 +1,12 @@
+{
+  "name": "agent-workshop",
+  "version": "0.1.0",
+  "description": "Agent 工坊：把一个 AI Agent 点子通过对话追问，整理成 AI 能看懂的需求文档和技术方案（agent-prd），再按方案开发成可交付的 Agent（agent-builder）。",
+  "author": {
+    "name": "hubooooooo"
+  },
+  "homepage": "https://github.com/hubooooooo/agent-workshop",
+  "repository": "https://github.com/hubooooooo/agent-workshop",
+  "license": "MIT",
+  "keywords": ["agent", "prd", "需求文档", "技术方案", "harness"]
+}

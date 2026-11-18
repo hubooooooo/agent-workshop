@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: complete-brief-writes-docs
+expected_outcome: |
+  The assistant writes PRD.md and 方案.md under docs/<product name>/ in the working directory, following the agent-prd templates: PRD keeps the user's words verbatim in section 1, marks unstated facts as 待确认, and lists open questions; 方案.md contains a component selection table produced by the bundled select_components.py script, a tool list with permissions (预订/通知老板 needs confirmation, changing prices is forbidden), the four degradation scenarios, and a self-check that is labeled as the author's own check rather than an independent review. It does not write any product code.

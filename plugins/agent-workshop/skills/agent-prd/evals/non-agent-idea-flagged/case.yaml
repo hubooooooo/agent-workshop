@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: non-agent-idea-flagged
+expected_outcome: |
+  The assistant points out that a personal blog website is not an AI Agent product, explains in plain words that this method would give a mismatched plan, and asks whether the user still wants to continue, instead of silently producing an Agent-style plan.

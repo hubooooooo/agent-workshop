@@ -48,7 +48,6 @@ SYSTEM = (
 
 ```text
 skills/
-  agent-builder/SKILL.md
   code-review/SKILL.md
   mcp-builder/SKILL.md
   pdf/SKILL.md
