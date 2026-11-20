@@ -191,6 +191,7 @@ type AppState struct {
 	playStreaming bool
 	playGen       int // 换产品或发新一句就 +1；旧的流式回复对不上号就丢掉，免得串到别的产品
 	playDraft     string
+	playInputGen  int // 试玩输入框已发送的次数，输入框按它重建以清空（见 chatComposer）
 	playFeedback  bool // 是否收到过「这里不对」的反馈卡
 
 	// 交接包
@@ -215,6 +216,7 @@ type AppState struct {
 	chatConfirm   *ConfirmCard
 	chatSuggest   []string
 	chatDraft     string
+	chatInputGen  int // 新建产品输入框已发送的次数
 
 	// 设置页
 	settings    map[string]any

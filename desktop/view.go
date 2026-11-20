@@ -438,6 +438,7 @@ func playPanel(c *ui.Context, slug string) {
 	streaming := app.playStreaming
 	draft := app.playDraft
 	draftBefore := draft
+	inputGen := app.playInputGen
 	feedback := app.playFeedback
 	handoffBusy := app.handoffBusy
 	handoffStatus := app.handoffStatus
@@ -454,17 +455,15 @@ func playPanel(c *ui.Context, slug string) {
 			})
 		}
 		ui.Scroll(c).Grow(1).Basis(0).Children(func() {
-			ui.Column(c).Padding(16, 24).Gap(12).MaxWidth(760).Children(func() {
+			chatColumn(c, func() {
+			ui.Column(c).Grow(1).Basis(0).MaxWidth(chatWidth).Padding(20, 0).Gap(14).Children(func() {
 				if intro != "" {
 					markdown.Markdown(c, intro, markdown.MarkdownProps{Variant: markdown.Chat})
 				}
 				for _, m := range messages {
 					switch m.Role {
 					case "user":
-						ui.Column(c).AlignSelf(ui.End).MaxWidth(520).
-							Padding(8, 12).Radius(12).Background(tk.PrimaryBg).Children(func() {
-							ui.Text(c, m.Text).FontSize(14)
-						})
+						userBubble(c, m.Text)
 					case "step":
 						stepCard(c, m.Step)
 					default:
@@ -481,18 +480,27 @@ func playPanel(c *ui.Context, slug string) {
 				if playErr != "" {
 					ui.Text(c, "⚠ "+playErr).FontSize(13).TextColor(tk.ErrorText)
 				}
-				if streaming {
-					ui.Text(c, "Agent 正在按方案跑工具…").FontSize(12).TextColor(tk.TextSecondary)
-				}
+			})
 			})
 		})
-		ui.Row(c).Shrink(0).Padding(12, 16).Gap(8).AlignItems(ui.Center).Children(func() {
-			field.Input(c, &draft, field.InputProps{Placeholder: "以使用者的身份说一句话…", Size: theme.Middle}).Grow(1).
-				OnSubmit(func() { go app.sendPlay(draft) })
-			writeBack(&app.playDraft, draftBefore, draft)
-			action.Button(c, "发送", action.ButtonProps{Variant: action.Primary, Size: theme.Middle}).
-				OnClick(func() { go app.sendPlay(draft) })
-		})
+		if text := chatComposer(c, inputGen, &draft, composerProps{
+			Placeholder: "以使用者的身份说一句话…", Busy: streaming, BusyText: "Agent 正在按方案跑工具…",
+		}); text != "" {
+			draft = ""
+			app.mu.Lock()
+			app.playInputGen++
+			app.mu.Unlock()
+			go app.sendPlay(text)
+		}
+		writeBack(&app.playDraft, draftBefore, draft)
+	})
+}
+
+// userBubble 用户说的话：靠右的圆角气泡。
+func userBubble(c *ui.Context, text string) {
+	tk := theme.TokensOf(c)
+	ui.Column(c).AlignSelf(ui.End).MaxWidth(560).Padding(10, 14).Radius(16).Background(tk.FillSecondary).Children(func() {
+		ui.Text(c, text).FontSize(15)
 	})
 }
 
@@ -642,7 +650,14 @@ func newProductView(c *ui.Context) {
 	suggest := append([]string(nil), app.chatSuggest...)
 	draft := app.chatDraft
 	draftBefore := draft
+	inputGen := app.chatInputGen
 	app.mu.Unlock()
+	send := func(text string) {
+		app.mu.Lock()
+		app.chatInputGen++
+		app.mu.Unlock()
+		go app.sendChat(text)
+	}
 
 	ui.Column(c).Grow(1).Basis(0).MinWidth(0).Margin(8, 8, 8, 0).
 		Radius(tk.BorderRadiusLG).Background(tk.BgContainer).Border(1, tk.Border).Clip().
@@ -650,52 +665,79 @@ func newProductView(c *ui.Context) {
 			ui.Row(c).Height(46).Shrink(0).Padding(16, 8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, "新建产品").FontSize(15).Bold()
 			})
-			ui.Scroll(c).Grow(1).Basis(0).Children(func() {
-				ui.Column(c).Padding(16, 24).Gap(12).Children(func() {
-					if len(messages) == 0 {
-						ui.Text(c, "说说你的想法，引擎会追问到说清楚为止（最多 6 轮）。").TextColor(tk.TextSecondary)
-					}
-					for _, m := range messages {
-						if m.Role == "user" {
-							ui.Column(c).AlignSelf(ui.End).MaxWidth(520).
-								Padding(8, 12).Radius(12).Background(tk.PrimaryBg).Children(func() {
-								ui.Text(c, m.Text).FontSize(14)
-							})
-						} else {
-							ui.Column(c).Grow(1).MaxWidth(640).Children(func() {
-								markdown.Markdown(c, m.Text, markdown.MarkdownProps{Variant: markdown.Chat})
-							})
-						}
-					}
-					if confirm != nil {
-						confirmCard(c, confirm)
-					}
-					if len(suggest) > 0 && !streaming {
-						ui.Row(c).Gap(6).Children(func() {
-							for _, s := range suggest {
-								action.Button(c, s, action.ButtonProps{Size: theme.Small}).OnClick(func() {
-									go app.sendChat(s)
+			if len(messages) == 0 && !streaming {
+				newProductWelcome(c, send)
+			} else {
+				ui.Scroll(c).Grow(1).Basis(0).Children(func() {
+					chatColumn(c, func() {
+						ui.Column(c).Grow(1).Basis(0).MaxWidth(chatWidth).Padding(20, 0).Gap(14).Children(func() {
+							for _, m := range messages {
+								if m.Role == "user" {
+									userBubble(c, m.Text)
+								} else {
+									markdown.Markdown(c, m.Text, markdown.MarkdownProps{Variant: markdown.Chat})
+								}
+							}
+							if confirm != nil {
+								confirmCard(c, confirm)
+							}
+							if len(suggest) > 0 && !streaming {
+								ui.Row(c).Gap(8).Wrap().Children(func() {
+									for _, s := range suggest {
+										action.Button(c, s, action.ButtonProps{Size: theme.Small}).OnClick(func() { send(s) })
+									}
 								})
 							}
+							if chatErr != "" {
+								ui.Text(c, "⚠ "+chatErr).FontSize(13).TextColor(tk.ErrorText)
+							}
 						})
-					}
-					if chatErr != "" {
-						ui.Text(c, "⚠ "+chatErr).FontSize(13).TextColor(tk.ErrorText)
+					})
+				})
+			}
+			if text := chatComposer(c, inputGen, &draft, composerProps{
+				Placeholder: "描述你想做的 AI 产品，比如：帮社区面包店回复顾客微信的 AI 客服",
+				Busy:        streaming, BusyText: "引擎正在思考…",
+			}); text != "" {
+				draft = ""
+				send(text)
+			}
+			writeBack(&app.chatDraft, draftBefore, draft)
+		})
+}
+
+// newProductWelcome 新建产品的空状态：居中的欢迎语和几个可以直接点的例子。
+func newProductWelcome(c *ui.Context, send func(string)) {
+	tk := theme.TokensOf(c)
+	examples := []string{
+		"帮社区面包店回复顾客微信的 AI 客服，能查今天的面包、接预订",
+		"帮我妈记账的 AI，她发一句「买菜 35」就记下来，月底给她总结",
+		"每天早上自动整理我的工作邮件，挑出要回的并起草回复",
+	}
+	ui.Column(c).Grow(1).Basis(0).Justify(ui.Center).Children(func() {
+		chatColumn(c, func() {
+			ui.Column(c).Grow(1).Basis(0).MaxWidth(chatWidth).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, lucide.Sparkles()).Width(28).Height(28).TextColor(tk.TextSecondary)
+				ui.Text(c, "说说你想做的 AI 产品").FontSize(24).Bold()
+				ui.Text(c, "我会一次问你一个问题，问清楚后整理成需求草稿给你确认。说不清的地方直接说「不知道」就行。").
+					FontSize(14).TextColor(tk.TextSecondary).TextAlign(ui.Center)
+				ui.Column(c).Gap(8).Padding(14, 0, 0, 0).AlignSelf(ui.Stretch).Children(func() {
+					for _, ex := range examples {
+						row := ui.ButtonBase(c).Padding(10, 14).Radius(12).Border(1, tk.BorderSecondary).
+							AlignItems(ui.Center).Justify(ui.Start).Gap(8).Row().Cursor(ui.CursorPointer)
+						if row.Hovered() {
+							row.Background(tk.FillQuaternary)
+						}
+						row.Children(func() {
+							ui.Icon(c, lucide.CornerDownLeft()).Width(14).Height(14).TextColor(tk.TextTertiary)
+							ui.Text(c, ex).FontSize(14).TextColor(tk.TextSecondary)
+						})
+						row.OnClick(func() { send(ex) })
 					}
 				})
 			})
-			// 输入区
-			ui.Row(c).Shrink(0).Padding(12, 16).Gap(8).AlignItems(ui.Center).Children(func() {
-				field.Input(c, &draft, field.InputProps{Placeholder: "描述你的产品点子…", Size: theme.Middle}).Grow(1).
-					OnSubmit(func() { go app.sendChat(draft) })
-				writeBack(&app.chatDraft, draftBefore, draft)
-				action.Button(c, "发送", action.ButtonProps{Variant: action.Primary, Size: theme.Middle}).
-					OnClick(func() { go app.sendChat(draft) })
-			})
-			if streaming {
-				ui.Text(c, "引擎正在思考…").FontSize(12).TextColor(tk.TextSecondary).Padding(0, 0, 8, 16)
-			}
 		})
+	})
 }
 
 // confirmCard 引擎给出草稿后的确认卡片。
