@@ -32,7 +32,7 @@
 <tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/teaching">下载</a> · <a href="https://github.com/hubooooooo/agent-workshop/tree/v1-maint">浏览源码</a></td></tr>
 <tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a></td></tr>
 <tr><td><b>AI 技能版</b></td><td>一个叫 agent-prd 的技能：装进你自己的 AI 工具，对话追问后写出 <code>PRD.md</code> 和 <code>方案.md</code>。不用下载项目、不用 Python、不用另配 API Key</td><td>已经在用 AI 工具的人，想最快拿到需求文档和技术方案</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd">下载</a> · <a href="plugins/agent-workshop/skills/agent-prd/README.md">各工具装法</a></td></tr>
-<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生重画，用同一个引擎；还没有打包好的安装包</td><td>想试新界面、会自己打包的开发者（需要 Go）</td><td><a href="desktop/README.md">从源码打包</a></td></tr>
+<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生重画，用同一个引擎：PRD、方案、试玩、新建产品、项目检查、模型设置都能用，界面固定浅色。回答问题、加新需求、版本历史还没做；还没有打包好的安装包</td><td>想试新界面、会自己打包的开发者（需要 Go）</td><td><a href="desktop/README.md">从源码打包</a></td></tr>
 </table>
 
 教学版、网页版、桌面版都下载到自己电脑上运行，不是网站；AI 技能版装进你正在用的 AI 工具里，不用下载整个项目。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-workshop/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
@@ -360,7 +360,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 <tr><td><a href="https://github.com/hubooooooo/agent-workshop/tree/main/web">web/</a></td><td>浏览器界面源码（React + assistant-ui），构建产物提交在 <code>blueprint/web/static/</code></td></tr>
 <tr><td><code>s01</code>–<code>s17</code></td><td>17 个组件的说明、参考实现与图示</td></tr>
 <tr><td><a href="common/">common/</a></td><td>组件参考实现共用的启动层</td></tr>
-<tr><td><a href="desktop/">desktop/</a></td><td>桌面版（macOS 原生界面，Go + Lobe MyGo）：拉起同一个引擎，走网页版的接口</td></tr>
+<tr><td><a href="desktop/">desktop/</a></td><td>桌面版（macOS 原生界面，Go + Lobe MyGo）：拉起同一个引擎，走网页版的接口，和网页版共用 <code>out/</code></td></tr>
 <tr><td><a href="scaffold/">scaffold/</a> · <a href="skills/">skills/</a></td><td>项目模板；s07 技能加载用的示例技能</td></tr>
 <tr><td><a href="plugins/agent-workshop/">plugins/agent-workshop/</a></td><td>AI 技能版：agent-prd（点子 → PRD 与技术方案，任何 AI 工具可用）、agent-builder（按方案开发），以 Claude Code 插件形式发布</td></tr>
 <tr><td><a href="docs/">docs/</a></td><td>入门指南、真实输出示例、维护手册</td></tr>
@@ -379,6 +379,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 .venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-student.zip（含打好的 agent-prd）
 .venv/bin/python tools/package_skill.py       # 生成 dist/agent-prd.skill 和 dist/agent-prd.zip
 claude plugin validate ./plugins/agent-workshop   # 检查插件；改了技能记得升 plugin.json 的 version
+cd desktop && go vet ./... && go test ./...       # 桌面版测试；运行和打包见 desktop/README.md
 ```
 
 改规则、换模型、调提示词前先看 [维护手册](docs/维护手册.md)，题库口径见 [evals/README.md](evals/README.md)，提交 PR 前看 [贡献指南](CONTRIBUTING.md)。
