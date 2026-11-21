@@ -74,7 +74,7 @@ func chatComposer(c *ui.Context, gen int, draft *string, p composerProps) string
 			})
 		})
 		if area.Focused() {
-			card.Border(1, tk.TextQuaternary) // 聚焦时边框加深一档，不用主色：深色模式下主色是纯白，太刺眼
+			card.Border(1, tk.TextQuaternary) // 聚焦时边框加深一档，不用主色：主色是近黑，整圈描黑太重
 		} else {
 			card.Border(1, tk.Border)
 		}
