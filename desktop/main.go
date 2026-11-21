@@ -66,6 +66,9 @@ func main() {
 		<-sigs
 		app.stopEngine()
 	}()
+	// 只做浅色：不跟随系统的深色模式。在 Run 之前设好，窗口一出来就是浅色，
+	// 标题栏、菜单这些系统画的部分也跟着是浅色，theme.Apply 也就只会取到浅色配色。
+	mygo.Theme.SetSource(mygo.ThemeLight)
 	mygo.App.WhenReady(func() {
 		mygo.App.SetLocale("zh-Hans")
 		mygo.NewWindow(windowOptions())
