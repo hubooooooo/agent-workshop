@@ -48,5 +48,5 @@
 - **命令都在终端里运行。** 不要用 `open` 打开 `.command` 文件，也不要让学生去双击。从浏览器下载的文件，双击会被 macOS 拦下来；在终端里运行不会。`启动引擎.command` 是给不用 AI 的人准备的终端问答，课上用不到。
 - **不要在聊天里要 API Key**，也不要读取、显示或转述 `.env` 的内容。学生把 Key 贴进聊天时，提醒他这样不安全，让他填进 `.env`。
 - **产品相关的东西只写进 `out/<产品名>/`。** 不改引擎代码（`blueprint/`、`sNN_*`、`tools/`、`common/` 等），不往桌面或别的地方写。`setup.sh` 建的 `.venv` 和 Python 自动生成的 `__pycache__` 不算。
-- **命令出错时**，把出错信息原样给学生看，再用大白话解释原因和下一步。流程中断或费用护栏让它停下时：`init` 不能续跑，重跑会提示工作区已存在，改用 `.venv/bin/python -m blueprint plan "out/<产品名>/PRD.md" -o "out/<产品名>" --resume`；`plan`、`audit` 用原命令加 `--resume`；`verify` 直接重跑。不要反复续跑来绕过上限。
+- **命令出错时**，把出错信息原样给学生看，再用大白话解释原因和下一步。流程中断或费用护栏让它停下时：`init` 不能续跑，重跑会提示工作区已存在，改用 `.venv/bin/python -m blueprint plan "out/<产品名>/PRD.md" -o "out/<产品名>" --resume`；`plan`、`audit` 用原命令加 `--resume`；`revise` 断了不要重跑（会再升一版），改用 `.venv/bin/python -m blueprint plan "out/<产品名>/PRD.md" -o "out/<产品名>" --resume` 接着推导；`verify` 直接重跑。不要反复续跑来绕过上限。
 - **没有 API Key 时**，按《使用引导.md》「没有配置模型接口」一节由你按手册分析，并在结果里注明。`--mock` 的结果只是占位，不能当成真实方案讲给学生。

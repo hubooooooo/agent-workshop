@@ -211,16 +211,40 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def resume_hint(args) -> str:
+    """中断后怎么接着跑。只有 plan、audit 收 --resume；别的命令照这个提示走，不会因为多加的参数直接报错。"""
+    if args.cmd in ("plan", "audit"):
+        return "已完成的阶段已保存，原命令加 --resume 继续。"
+    if args.cmd == "init" and getattr(args, "plan", False):
+        from blueprint.workspace import slugify
+        ws = DEFAULT_OUT / slugify(args.name)
+        return f"工作区已建好，接着推导：.venv/bin/python -m blueprint plan \"{ws / 'PRD.md'}\" -o \"{ws}\" --resume"
+    if args.cmd == "revise":
+        ws = Path(args.workspace)
+        return ("需求文档已经升到新版本，只是方案没推导完。接着推导：.venv/bin/python -m blueprint plan "
+                f"\"{ws / 'PRD.md'}\" -o \"{ws}\" --resume（不要重跑 revise，否则会再升一版）")
+    return "修好后重新运行原命令即可。"
+
+
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     try:
         sys.exit(args.func(args))
     except BudgetExceeded as exc:
-        print(f"\n⛔ 费用护栏触发：{exc}。已完成的阶段已保存，可加 --resume 继续。")
+        print(f"\n⛔ 费用护栏触发：{exc}。{resume_hint(args)}")
         sys.exit(2)
     except StageOutputInvalid as exc:
-        print(f"\n⛔ 模型输出不合格式：{exc}。可加 --resume 重试失败的阶段。")
+        print(f"\n⛔ 模型输出不合格式：{exc}。{resume_hint(args)}")
         sys.exit(3)
     except (OSError, ValueError) as exc:
         print(f"\n⛔ {exc}")
         sys.exit(1)
+    except Exception as exc:
+        from anthropic import APIError, APITimeoutError
+        if isinstance(exc, APITimeoutError):
+            print(f"\n⛔ 模型接口超时（单次请求超过 120 秒）。网络或服务商慢时稍后再试。{resume_hint(args)}")
+        elif isinstance(exc, APIError):
+            print(f"\n⛔ 模型接口报错：{exc}。{resume_hint(args)}")
+        else:
+            raise
+        sys.exit(4)
