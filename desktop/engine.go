@@ -118,6 +118,7 @@ scan:
 	s.mu.Unlock()
 	s.invalidate()
 	s.refreshProducts()
+	s.loadConfig()
 }
 
 func (s *AppState) failEngine(msg string) {

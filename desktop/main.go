@@ -16,6 +16,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/theme"
 
 	// 注册应用文案目录，让 MyGo 与 Lobe 组件的内建文案讲中文。
@@ -42,16 +43,33 @@ func root(c *ui.Context) {
 			content(c)
 		})
 	})
+	drainToasts(c)
+	feedback.ToastHost(c, feedback.ToastHostProps{})
+}
+
+// drainToasts 把后台排好的提示在界面线程弹出来（和网页版右下角的 toast 一样）。
+func drainToasts(c *ui.Context) {
+	app.mu.Lock()
+	pending := app.toasts
+	app.toasts = nil
+	app.mu.Unlock()
+	for _, t := range pending {
+		kind := feedback.ToastError
+		if t.ok {
+			kind = feedback.ToastSuccess
+		}
+		feedback.ShowToast(c, feedback.ToastProps{Description: t.text, Type: kind})
+	}
 }
 
 func windowOptions() mygo.WindowOptions {
 	return mygo.WindowOptions{
-		Title:    "Agent 工坊",
-		Width:    1280,
-		Height:   820,
-		MinWidth: 960,
+		Title:     "Agent 工坊",
+		Width:     1280,
+		Height:    820,
+		MinWidth:  960,
 		MinHeight: 600,
-		Content:  ui.View(root),
+		Content:   ui.View(root),
 	}
 }
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/display"
@@ -95,4 +96,26 @@ func gotoSettings() {
 	app.mu.Unlock()
 	app.invalidate()
 	go app.loadSettings()
+}
+
+// breaks 让单个换行真的换行，和网页版的 remark-breaks 一样：引擎和模型写的「A. …\nB. …」
+// 是想分行显示的，标准 Markdown 却会把它们并成一段。代码块和表格行原样不动。
+func breaks(src string) string {
+	lines := strings.Split(src, "\n")
+	fenced := false
+	for i, l := range lines {
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
+			fenced = !fenced
+			continue
+		}
+		if fenced || t == "" || strings.HasPrefix(t, "|") || i == len(lines)-1 {
+			continue
+		}
+		if strings.TrimSpace(lines[i+1]) == "" || strings.HasSuffix(l, "  ") {
+			continue
+		}
+		lines[i] = l + "  "
+	}
+	return strings.Join(lines, "\n")
 }

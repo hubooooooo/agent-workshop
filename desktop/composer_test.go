@@ -74,3 +74,31 @@ func TestComposerDoesNotSendEmptyOrWhileBusy(t *testing.T) {
 		t.Fatal("busy text should replace the shortcut hint")
 	}
 }
+
+// 点右下角的发送按钮也要能发出去（不只是 Enter）。
+func TestComposerSendButtonSends(t *testing.T) {
+	h := &composerHarness{}
+	tt := ui.NewTester(h.view, 900, 600)
+	tt.Type("点按钮发送")
+	tt.Frame()
+	clickSend(t, tt)
+	tt.Frame()
+	if len(h.sent) != 1 || h.sent[0] != "点按钮发送" {
+		t.Fatalf("clicking the send button should send, sent=%q", h.sent)
+	}
+	if h.draft != "" {
+		t.Fatalf("draft should be cleared after sending, got %q", h.draft)
+	}
+}
+
+// clickSend 点输入框右下角的圆形发送按钮：和左下角的提示在同一行，靠卡片右边。
+func clickSend(t *testing.T, tt *ui.Tester) {
+	t.Helper()
+	hint, ok := tt.Find("Enter 发送")
+	if !ok {
+		t.Fatal("composer hint not found")
+	}
+	// 卡片最宽 chatWidth，在 900 宽的窗口里居中（左右各留 70），内边距 16，按钮 32 宽。
+	x := float32(900-(900-chatWidth)/2) - 16 - 16
+	tt.ClickAt(x, hint.Y+hint.H/2)
+}

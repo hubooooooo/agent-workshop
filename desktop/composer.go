@@ -57,6 +57,10 @@ func chatComposer(c *ui.Context, gen int, draft *string, p composerProps) string
 				ui.Text(c, hint).FontSize(12).TextColor(tk.TextTertiary)
 				btn := ui.ButtonBase(c).Width(32).Height(32).Radius(16).AlignItems(ui.Center).Justify(ui.Center).
 					Disabled(!canSend)
+				// 点击要在这一帧里读出来：OnClick 的回调在本函数返回之后才跑，改局部变量 send 就丢了。
+				if btn.Clicked() && canSend {
+					send = text
+				}
 				if canSend {
 					btn.Background(tk.Primary).Cursor(ui.CursorPointer)
 				} else {
@@ -70,7 +74,6 @@ func chatComposer(c *ui.Context, gen int, draft *string, p composerProps) string
 						icon.TextColor(tk.TextQuaternary)
 					}
 				})
-				btn.OnClick(func() { send = text })
 			})
 		})
 		if area.Focused() {
