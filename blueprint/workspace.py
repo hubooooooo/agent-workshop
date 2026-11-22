@@ -36,6 +36,8 @@ VERIFY_DIR = "verify"
 PENDING_HEADING = "## 7. 新增需求（待消化）"
 # 网页界面自动整理的小节（PRD 第 2–5 节，见 blueprint/prd_fill.py）带这个标记。它们是给人和交接包看的产物，
 # 不是推导的输入：推导前会被 strip_auto_sections 去掉，否则里面的「待确认」会被再拆成新问题，越滚越多。
+# 写进用户 PRD.md 的隐藏标记，认出「引擎自动整理过的小节」。沿用改名前的写法：
+# 已有工作区的 PRD 里都是这个，换掉就认不出来了；它是 HTML 注释，界面和文档里都看不到。
 AUTO_MARK = "<!-- agent-blueprint:auto -->"
 
 

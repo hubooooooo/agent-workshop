@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -130,6 +131,40 @@ def test_environment_takes_precedence_and_client_settings(monkeypatch):
     assert settings["timeout"] == 120 and settings["max_retries"] == 0
 
 
+def test_env_file_with_real_key_wins_over_inherited_environment(monkeypatch, tmp_path):
+    """回归：在某些 AI 编程工具里运行时，终端带着工具自己的 ANTHROPIC_BASE_URL，曾经盖过 .env 里 DeepSeek 的地址，
+    请求发到别的服务商，报「Key 无效（401）」。.env 有真实 Key 时，模型配置以 .env 为准，没写的项清掉。"""
+    from blueprint import llm
+    env_file = tmp_path / ".env"
+    env_file.write_text("ANTHROPIC_API_KEY=sk-real-deepseek\nMODEL_ID=deepseek-v4-flash\n"
+                        "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\n", encoding="utf-8")
+    monkeypatch.setattr(llm, "ENV_FILE", env_file)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-the-tool")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token-from-the-tool")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://elsewhere/v1")
+    monkeypatch.setenv("BLUEPRINT_TIMEOUT", "300")
+    llm.load_config()
+    assert os.environ["ANTHROPIC_BASE_URL"] == "https://api.deepseek.com/anthropic"
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-real-deepseek"
+    assert os.environ["MODEL_ID"] == "deepseek-v4-flash"
+    assert "ANTHROPIC_AUTH_TOKEN" not in os.environ and "OPENAI_BASE_URL" not in os.environ
+    assert os.environ["BLUEPRINT_TIMEOUT"] == "300"     # 不是模型配置的变量不动
+
+
+def test_env_file_without_real_key_keeps_environment(monkeypatch, tmp_path):
+    """.env 里只有占位 Key（刚复制的模板）时，照旧用环境变量里的配置。"""
+    from blueprint import llm
+    env_file = tmp_path / ".env"
+    env_file.write_text("ANTHROPIC_API_KEY=sk-ant-xxx\nMODEL_ID=claude-sonnet-4-6\n", encoding="utf-8")
+    monkeypatch.setattr(llm, "ENV_FILE", env_file)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-real-from-shell")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic")
+    llm.load_config()
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-real-from-shell"
+    assert os.environ["ANTHROPIC_BASE_URL"] == "https://api.deepseek.com/anthropic"
+
+
 @pytest.mark.parametrize("key", ["", "sk-ant-xxx", "your-api-key"])
 def test_placeholder_credentials_are_not_real(monkeypatch, key):
     monkeypatch.setenv("ANTHROPIC_API_KEY", key)
@@ -227,3 +262,17 @@ def test_empty_assistant_turn_is_valid_openai_message():
                                                                      "input": {}}]}])
     assert out[0]["content"] == ""
     assert out[1]["content"] is None and out[1]["tool_calls"][0]["id"] == "t1"
+
+
+def test_resume_hint_only_suggests_resume_where_it_exists():
+    """只有 plan、audit 收 --resume。回归：init --plan 被接口报错打断时曾提示「加 --resume」，照做会直接报参数错误。"""
+    from argparse import Namespace
+    from blueprint.cli import build_parser, resume_hint
+    assert "--resume" in resume_hint(Namespace(cmd="plan"))
+    assert "--resume" in resume_hint(Namespace(cmd="audit"))
+    hint = resume_hint(Namespace(cmd="init", plan=True, name="酒馆 搭子"))
+    assert "blueprint plan" in hint and "酒馆-搭子" in hint and hint.endswith("--resume")
+    for cmd in ("revise", "verify"):
+        assert "--resume" not in resume_hint(Namespace(cmd=cmd))
+    # 给出的 plan 命令本身能被解析
+    build_parser().parse_args(["plan", "out/x/PRD.md", "-o", "out/x", "--resume"])

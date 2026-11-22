@@ -175,6 +175,20 @@ func (s *AppState) chatRegenerate(key, endpoint string) {
 	s.chatSend(key, endpoint, text)
 }
 
+// chatEditResend 「修改」后重新发送：第 idx 条及之后的对话丢掉，改过的话重新发。
+func (s *AppState) chatEditResend(key, endpoint string, idx int, text string) {
+	s.mu.Lock()
+	cs := s.chats[key]
+	if cs == nil || cs.Streaming || cs.Finished || idx < 0 || idx >= len(cs.Msgs) {
+		s.mu.Unlock()
+		return
+	}
+	cs.Msgs, cs.Card, cs.Chips = cs.Msgs[:idx], nil, nil
+	cs.replied = idx > 0
+	s.mu.Unlock()
+	s.chatSend(key, endpoint, text)
+}
+
 // chatRestart 清空这段对话，回到开场白。
 func (s *AppState) chatRestart(key string) {
 	s.mu.Lock()
@@ -320,6 +334,31 @@ func (s *AppState) carryNotes(slug string) {
 	delete(s.notes, slug)
 	s.productTab = "revise"
 	s.invalidate()
+}
+
+// playEditResend 试玩里「修改」后重新发送：这句及之后的动作和回复丢掉，改过的话重新发。
+func (s *AppState) playEditResend(idx int, text string) {
+	s.mu.Lock()
+	if s.playStreaming || idx < 0 || idx >= len(s.playMessages) {
+		s.mu.Unlock()
+		return
+	}
+	s.playMessages = s.playMessages[:idx]
+	s.mu.Unlock()
+	s.sendPlay(text)
+}
+
+// chatIntakeEditResend 新建产品里「修改」后重新发送。
+func (s *AppState) chatIntakeEditResend(idx int, text string) {
+	s.mu.Lock()
+	if s.chatStreaming || idx < 0 || idx >= len(s.chatMessages) {
+		s.mu.Unlock()
+		return
+	}
+	s.chatMessages = s.chatMessages[:idx]
+	s.chatConfirm, s.chatSuggest = nil, nil
+	s.mu.Unlock()
+	s.sendChat(text)
 }
 
 // regeneratePlay 试玩「重新生成」：去掉最后一轮的动作卡和回复，把上一句话重新发一次。

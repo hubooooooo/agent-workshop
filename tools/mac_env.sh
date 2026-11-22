@@ -34,7 +34,7 @@ prepare_env() {
   PY="$(find_python)"
   if [ -z "$PY" ]; then
     echo "检测到这台 Mac 还没安装 Python 3.10+，正在帮你下载安装包（约 40MB）…"
-    PKG="/tmp/agent-blueprint-python.pkg"
+    PKG="/tmp/agent-workshop-python.pkg"
     if curl -L --fail --silent --show-error -o "$PKG" "$PY_URL"; then
       open "$PKG"
       echo ""
