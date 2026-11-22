@@ -32,6 +32,7 @@ PATTERNS = (
     "evals/reverse/*/expected.json", "evals/reverse/*/target.txt",
     "evals/reverse/*/README.md", "evals/reverse/*/src/*.py",
     "tests/test_*.py", "tools/package_student.py", "tools/package_skill.py", "tools/wizard.py", "tools/mac_env.sh", "tools/refresh_examples.py",
+    "tools/probe_tools.py",
 )
 
 
