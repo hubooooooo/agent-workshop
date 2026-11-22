@@ -248,8 +248,15 @@ type AppState struct {
 	noteGen    int
 	reviseSeed map[string]string // 带去加新需求的草稿，按产品存
 	playMsgSeq int
-	playChips  []string // 开场的几个场景，第一次回复前显示
-	playRole   string
+	playFP     string                  // 当前试玩开场的指纹（方案变了就换）
+	playSaved  map[string]savedProduct // 上次存下、还没接上的试玩，按产品存（见 persist.go）
+
+	// 对话存盘：每个产品文件夹的路径、这次打开后是否已经读回过
+	productPaths map[string]string
+	restored     map[string]bool
+	saveMu       sync.Mutex // 同一时间只写一个文件
+	playChips    []string   // 开场的几个场景，第一次回复前显示
+	playRole     string
 
 	// 版本历史
 	history    *History
@@ -323,6 +330,10 @@ func newState() *AppState {
 		chats:      map[string]*chatSession{},
 		notes:      map[string][]playNote{},
 		reviseSeed: map[string]string{},
+		playSaved:  map[string]savedProduct{},
+
+		productPaths: map[string]string{},
+		restored:     map[string]bool{},
 	}
 }
 
@@ -380,7 +391,7 @@ func (s *AppState) selectProduct(slug string) {
 	s.loading = true
 	s.playStarted, s.playIntro, s.playMessages, s.playErr, s.playDraft = false, "", nil, "", ""
 	s.playStreaming = false
-	s.playChips, s.playRole, s.noteOpen = nil, "", 0
+	s.playChips, s.playRole, s.noteOpen, s.playFP = nil, "", 0, ""
 	s.playGen++
 	s.history, s.historyErr, s.historyFor = nil, "", ""
 	s.prdDoc, s.prdDocErr, s.prdDocOpen = nil, "", false
@@ -437,6 +448,10 @@ func (s *AppState) fetchDetail(slug string) {
 	}
 	s.answerIntro, _ = data["answer_intro"].(string)
 	s.productPath, _ = data["path"].(string)
+	if s.productPath != "" {
+		s.productPaths[slug] = s.productPath
+		s.restoreProduct(slug) // 第一次打开：把上次存下的对话读回来
+	}
 	if v, ok := data["version"].(float64); ok {
 		s.prdVer = int(v)
 	}
@@ -620,6 +635,7 @@ func (s *AppState) startPlay(slug string) {
 				text = fmt.Sprintf("你现在扮演**%s**。发一句话试试，我会按方案里的设计回应。", role)
 			}
 			s.playIntro, s.playRole = text, role
+			s.playFP, _ = data["fingerprint"].(string)
 			s.playChips = nil
 			if raw, ok := data["scenarios"].([]any); ok {
 				for _, r := range raw {
@@ -628,6 +644,7 @@ func (s *AppState) startPlay(slug string) {
 					}
 				}
 			}
+			s.resumePlay(slug, s.playFP) // 上次没聊完、方案也没变：接着聊
 		}
 		s.invalidate()
 	}()
@@ -698,6 +715,7 @@ func (s *AppState) sendPlay(text string) {
 		}
 		s.mu.Unlock()
 		s.invalidate()
+		s.saveProduct(slug)
 	}()
 }
 
