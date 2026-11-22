@@ -31,7 +31,7 @@
 <table>
 <tr><th align="left" width="16%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">名称</th><th align="left" width="40%">是什么</th><th align="left" width="22%">适合</th><th align="left" width="22%">下载</th></tr>
 <tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/teaching">下载</a> · <a href="https://github.com/hubooooooo/agent-workshop/tree/v1-maint">浏览源码</a></td></tr>
-<tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a></td></tr>
+<tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目。安装包里同时带着下面的桌面版</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a></td></tr>
 <tr><td><b>AI 技能版</b></td><td>一个叫 agent-prd 的技能：装进你自己的 AI 工具，对话追问后写出 <code>PRD.md</code> 和 <code>方案.md</code>。不用下载项目、不用 Python、不用另配 API Key</td><td>已经在用 AI 工具的人，想最快拿到需求文档和技术方案</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd">下载</a> · <a href="plugins/agent-workshop/skills/agent-prd/README.md">各工具装法</a></td></tr>
 <tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生应用，就在网页版的安装包里（<code>Agent 工坊.app</code>）：用同一个引擎，功能和网页版一致，界面固定浅色；Apple 芯片和 Intel 的 Mac 都能用</td><td>不想开浏览器、喜欢原生应用的人</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a>（和网页版同一个包）</td></tr>
 </table>
@@ -167,6 +167,8 @@ claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
 截图里的方案、试玩对话和差距报告都是真实运行结果（模型 deepseek-v4-flash），没有人工修改。
 
 产品页左栏底部会显示这个产品累计调用了多少次模型、用了多少 tokens（推导和对话都算，新建产品时的追问不算）。用的时候别关启动它的那个终端窗口。检查产品的代码骨架、带着自己的 PRD 检查外部项目，网页上还没有，暂时要用下面的终端问答。
+
+**桌面版**：不想开浏览器的话，双击同一个文件夹里的 **`Agent 工坊.app`**，上面这些步骤在桌面版里都一样，详见下面「🖥 桌面版（Mac，预览）」一节。
 
 **终端问答**：双击 **`启动引擎.command`**，终端里一问一答走完全程：
 
@@ -380,7 +382,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件（或 `
 不支持工具调用的模型会自动退回固定流程，照样能出方案和报告，只是少了 agent 的自检和核实，试玩里的规矩也只能靠提示词约束。支持工具调用的便宜模型反而更该用 agent：试玩里「禁止」「要确认」由代码保证，不靠模型听不听话。用 `tools/probe_tools.py` 可以先测一下。
 
 **Windows 能用吗？**
-引擎本身是纯 Python，但只在 macOS 和 Linux 上测试过。Windows 建议用 WSL 或方式二。s13、s15、s16 的参考实现依赖 `fcntl`，只能在 macOS 和 Linux 上运行。
+引擎本身是纯 Python，但只在 macOS 和 Linux 上测试过。Windows 建议用 WSL 或方式二。桌面版和两个双击启动文件只支持 macOS。s13、s15、s16 的参考实现依赖 `fcntl`，只能在 macOS 和 Linux 上运行。
 
 ---
 
@@ -411,6 +413,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件（或 `
 .venv/bin/python -m blueprint eval --real-audit --repeat 3   # 真实模型跑反向检查题库
 .venv/bin/python tools/refresh_examples.py    # 改提示词后重新生成示例
 .venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-web.zip（网页版安装包，含打好的 agent-prd）
+#   发版时加 --desktop-app "desktop/dist/darwin-universal/Agent 工坊.app" 把桌面版放进去，步骤见维护手册
 .venv/bin/python tools/package_skill.py       # 生成 dist/agent-prd.skill 和 dist/agent-prd.zip
 claude plugin validate ./plugins/agent-workshop   # 检查插件；改了技能记得升 plugin.json 的 version
 cd desktop && go vet ./... && go test ./...       # 桌面版测试；运行和打包见 desktop/README.md
@@ -427,7 +430,8 @@ cd desktop && go vet ./... && go test ./...       # 桌面版测试；运行和�
 <tr><td>只有一个模糊想法，不知道怎么描述</td><td><a href="docs/beginner-guide.md">小白入门指南</a></td></tr>
 <tr><td>看一份完整方案和差距报告</td><td><a href="docs/examples/README.md">真实输出示例</a></td></tr>
 <tr><td>理解推导方法</td><td><a href="BLUEPRINT.md">BLUEPRINT.md</a></td></tr>
-<tr><td>改规则、换模型、分发给学生</td><td><a href="docs/维护手册.md">维护手册</a></td></tr>
+<tr><td>自己打包桌面版、了解它的结构</td><td><a href="https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md">桌面版说明</a></td></tr>
+<tr><td>改规则、换模型、发版、分发给学生</td><td><a href="docs/维护手册.md">维护手册</a></td></tr>
 </table>
 
 ---
