@@ -286,7 +286,7 @@ OPENAI_BASE_URL=https://你的中转地址/v1      # 用 OpenAI 官方接口时�
 .venv/bin/python -m blueprint eval            # 离线题库回归
 .venv/bin/python -m blueprint eval --real     # 真实模型特征一致率
 .venv/bin/python tools/refresh_examples.py    # 改提示词后重新生成示例
-.venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-student.zip
+.venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-teaching.zip（教学版发布页的附件）
 ```
 
 改规则、换模型、调提示词前先看 [维护手册](docs/维护手册.md)，题库口径见 [evals/README.md](evals/README.md)，提交 PR 前看 [贡献指南](CONTRIBUTING.md)。

@@ -19,9 +19,51 @@ DEFAULT_MODEL = "claude-sonnet-4-6"   # 与 .env.example、scaffold 保持一致
 DEFAULT_OPENAI_MODEL = "gpt-6-luna"   # API_FORMAT=openai 且没填 MODEL_ID 时用；与 tools/wizard.py 一致
 
 
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+# 模型配置的几个变量：.env 里有真实 Key 时，它们一律以 .env 为准（见 load_config）
+MODEL_VARS = ("API_FORMAT", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
+              "OPENAI_API_KEY", "OPENAI_BASE_URL", "MODEL_ID")
+_PLACEHOLDER_MARKERS = ("xxx", "your", "placeholder")
+
+
+def _read_env_file(path: Path) -> dict:
+    data: dict = {}
+    if not path.exists():
+        return data
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        data[key.strip()] = value.strip().strip("\"'")
+    return data
+
+
+def _is_real_key(value: str) -> bool:
+    low = value.strip().lower()
+    return bool(low) and not any(m in low for m in _PLACEHOLDER_MARKERS)
+
+
 def load_config() -> None:
+    """读引擎目录的 .env。
+
+    .env 里填了真实 Key 时，模型配置（Key、接口地址、模型名、接口格式）一律以 .env 为准：
+    终端里已经设好的同名环境变量不算数，.env 没写的那几项也清掉。课堂上由 AI 编程工具在终端里运行命令，
+    有的工具会自己设 ANTHROPIC_BASE_URL，以前会盖过 .env，请求发到别的服务商，报「Key 无效（401）」。
+    .env 没有 Key 时照旧用环境变量；其余变量（BLUEPRINT_* 等）不动。
+    """
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+    load_dotenv(ENV_FILE, override=False)
+    env = _read_env_file(ENV_FILE)
+    key_var = "OPENAI_API_KEY" if env.get("API_FORMAT", "").strip().lower() == "openai" else "ANTHROPIC_API_KEY"
+    if not _is_real_key(env.get(key_var, "")):
+        return
+    for name in MODEL_VARS:
+        if env.get(name):
+            os.environ[name] = env[name]
+        else:
+            os.environ.pop(name, None)
 
 
 def api_format() -> str:
