@@ -33,10 +33,10 @@
 <tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/teaching">下载</a> · <a href="https://github.com/hubooooooo/agent-workshop/tree/v1-maint">浏览源码</a></td></tr>
 <tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a></td></tr>
 <tr><td><b>AI 技能版</b></td><td>一个叫 agent-prd 的技能：装进你自己的 AI 工具，对话追问后写出 <code>PRD.md</code> 和 <code>方案.md</code>。不用下载项目、不用 Python、不用另配 API Key</td><td>已经在用 AI 工具的人，想最快拿到需求文档和技术方案</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd">下载</a> · <a href="plugins/agent-workshop/skills/agent-prd/README.md">各工具装法</a></td></tr>
-<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生重画，用同一个引擎，功能和网页版一致，界面固定浅色；还没有打包好的安装包</td><td>想试新界面、会自己打包的开发者（需要 Go）</td><td><a href="https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md">从源码打包</a></td></tr>
+<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生应用，就在网页版的安装包里（<code>Agent 工坊.app</code>）：用同一个引擎，功能和网页版一致，界面固定浅色；Apple 芯片和 Intel 的 Mac 都能用</td><td>不想开浏览器、喜欢原生应用的人</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a>（和网页版同一个包）</td></tr>
 </table>
 
-教学版、网页版、桌面版都下载到自己电脑上运行，不是网站；AI 技能版装进你正在用的 AI 工具里，不用下载整个项目。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-workshop/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
+教学版、网页版、桌面版都下载到自己电脑上运行，不是网站；AI 技能版装进你正在用的 AI 工具里，不用下载整个项目。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-workshop/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，桌面版双击同一个文件夹里的 `Agent 工坊.app`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
 
 ## 它能帮你做什么
 
@@ -228,7 +228,9 @@ bash setup.sh                         # 建虚拟环境、装依赖，把 .env.e
 
 ### 🖥 桌面版（Mac，预览）
 
-网页版界面的 macOS 原生重画，后台拉起同一个引擎，和网页版共用 `out/`，在哪边建的产品另一边都看得到。功能和网页版一致：概览、回答问题、试玩、加新需求、方案、版本历史、检查项目、模型设置都有，页面结构也一样。对话会存在这台电脑上，关掉再打开还能接着来。和网页版唯一的不同是界面固定浅色。还没有安装包，需要装 Go 自己打包，步骤见[桌面版说明](https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md)。
+网页版界面的 macOS 原生重画，后台拉起同一个引擎，和网页版共用 `out/`，在哪边建的产品另一边都看得到。功能和网页版一致：概览、回答问题、试玩、加新需求、方案、版本历史、检查项目、模型设置都有，页面结构也一样。对话会存在这台电脑上，关掉再打开还能接着来。和网页版唯一的不同是界面固定浅色。
+
+它就在网页版的安装包里：解压后双击文件夹里的 **`Agent 工坊.app`**（不用另装什么；第一次打开会自己准备 Python 环境，左下角显示进度，大约 1 分钟）。应用要留在解压出来的文件夹里用，别单独拖进「应用程序」。没有经过苹果签名，第一次打开会被拦下，放行步骤见[常见问题](#常见问题)。自己从源码打包见[桌面版说明](https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md)。
 
 <table>
 <tr>
@@ -351,14 +353,14 @@ agent 需要模型支持工具调用。DeepSeek 实测支持（Anthropic 格式�
 ## 常见问题
 
 **第一次双击提示「无法打开」怎么办？**
-启动文件没有经过苹果签名，从浏览器下载后第一次双击，macOS 会拦下来，提示「Apple 无法验证……是否包含恶意软件」。放行一次，以后双击就正常了：
+启动文件和桌面版 `Agent 工坊.app` 都没有经过苹果签名，从浏览器下载后第一次双击，macOS 会拦下来，提示「Apple 无法验证……是否包含恶意软件」。放行一次，以后双击就正常了（两个文件各放行一次）：
 
 1. 在弹窗里点「完成」，不要点「移到废纸篓」。
 2. 打开「系统设置」→ 左栏「隐私与安全性」，右边往下翻到「安全性」。
-3. 那里会有一行「已阻止"启动界面.command"……」，点旁边的「仍要打开」。没看到这一行的话，先回去再双击一次启动文件，再回来看。
+3. 那里会有一行「已阻止"启动界面.command"……」（桌面版是「已阻止"Agent 工坊"……」），点旁边的「仍要打开」。没看到这一行的话，先回去再双击一次启动文件，再回来看。
 4. 输入开机密码（或按指纹），在再次弹出的窗口里点「仍要打开」。
 
-macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选「打开」，再点「打开」。
+macOS 14 及更早的版本更简单：按住 Control 键点启动文件（或 `Agent 工坊.app`），选「打开」，再点「打开」。
 
 会用终端的话，也可以一次放行整个文件夹：`xattr -dr com.apple.quarantine 解压出来的文件夹路径`。用 `git clone` 下载的不会被拦。
 
@@ -392,7 +394,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 <tr><td><a href="https://github.com/hubooooooo/agent-workshop/tree/main/web">web/</a></td><td>浏览器界面源码（React + assistant-ui），构建产物提交在 <code>blueprint/web/static/</code></td></tr>
 <tr><td><code>s01</code>–<code>s17</code></td><td>17 个组件的说明、参考实现与图示</td></tr>
 <tr><td><a href="common/">common/</a></td><td>组件参考实现共用的启动层</td></tr>
-<tr><td><a href="https://github.com/hubooooooo/agent-workshop/tree/main/desktop">desktop/</a></td><td>桌面版（macOS 原生界面，Go + Lobe MyGo）：拉起同一个引擎，走网页版的接口，和网页版共用 <code>out/</code></td></tr>
+<tr><td><a href="https://github.com/hubooooooo/agent-workshop/tree/main/desktop">desktop/</a></td><td>桌面版（macOS 原生界面，Go + Lobe MyGo）：拉起同一个引擎，走网页版的接口，和网页版共用 <code>out/</code>；打好的应用随网页版安装包发布</td></tr>
 <tr><td><a href="scaffold/">scaffold/</a> · <a href="skills/">skills/</a></td><td>项目模板；s07 技能加载用的示例技能</td></tr>
 <tr><td><a href="plugins/agent-workshop/">plugins/agent-workshop/</a> · <a href=".claude-plugin/">.claude-plugin/</a></td><td>AI 技能版：agent-prd（点子 → PRD 与技术方案，任何 AI 工具可用）、agent-builder（按方案开发），以 Claude Code 插件形式发布；<code>.claude-plugin/</code> 是插件市场清单</td></tr>
 <tr><td><a href="docs/">docs/</a></td><td>入门指南、真实输出示例、维护手册</td></tr>

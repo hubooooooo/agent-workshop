@@ -22,6 +22,7 @@ func sidebar(c *ui.Context) {
 	products := append([]Product(nil), app.products...)
 	selected := app.selected
 	engineErr := app.engineErr
+	engineStatus := app.engineStatus
 	up := app.engineURL != ""
 	cfgLoaded, cfgMock, cfgConfigured, cfgModel := app.cfgLoaded, app.cfgMock, app.cfgConfigured, app.cfgModel
 	app.mu.Unlock()
@@ -108,6 +109,9 @@ func sidebar(c *ui.Context) {
 
 		// 底部：引擎状态（小圆点 + 一行字）
 		status, dot, color := "引擎启动中…", tk.Warning, tk.TextTertiary
+		if engineStatus != "" {
+			status = engineStatus
+		}
 		switch {
 		case engineErr != "":
 			status, dot, color = engineErr, tk.Error, tk.ErrorText

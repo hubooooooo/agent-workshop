@@ -56,10 +56,19 @@ go vet ./... && go test ./...
 
 ```bash
 cd desktop
-GOPROXY=https://goproxy.cn,direct go tool mygo build
+GOPROXY=https://goproxy.cn,direct go tool mygo build                              # 只打本机架构，自己用
+GOPROXY=https://goproxy.cn,direct go tool mygo build --platform darwin/universal  # 发版用：Apple 芯片和 Intel 都能跑
 ```
 
-产物在 `dist/darwin-arm64/`：`Agent 工坊.app`（约 13 MB）和 `agent-gong-fang-0.1.0-arm64.dmg`（约 4 MB）。应用名、版本、包名配在 `mygo.json`，图标是 `resources/icon.png`（1024×1024 最佳）。现在没有签名和公证，正式分发前要配开发者证书。
+产物在 `dist/darwin-arm64/` 或 `dist/darwin-universal/`：`Agent 工坊.app`（通用包约 27 MB）和一个 dmg。应用名、版本、包名配在 `mygo.json`，图标是 `resources/icon.png`（1024×1024 最佳）。
+
+**发布**：桌面版不单独发，放进网页版安装包，解压后和「启动界面.command」在同一个文件夹里：
+
+```bash
+.venv/bin/python tools/package_student.py --desktop-app "desktop/dist/darwin-universal/Agent 工坊.app"
+```
+
+应用用 mygo 的临时签名（ad-hoc），没有开发者证书签名和公证，用户第一次打开要到「隐私与安全性」放行一次（和启动文件一样）。以后要签名分发：在 `mygo.json` 填 `macos.signingIdentity`（Developer ID 证书）和 `macos.notarize.keychainProfile`（`xcrun notarytool store-credentials` 存的凭据），再用上面的命令打包，签名和公证会自动完成。
 
 ## 结构
 
@@ -82,7 +91,8 @@ GOPROXY=https://goproxy.cn,direct go tool mygo build
 
 ## 约束与约定
 
-- **应用要放在 agent-workshop 仓库里运行**：它向上找同时有 `blueprint/` 和 `.venv/` 的目录当仓库根（先按应用自身的路径找，再按工作目录找）。打包出的 .app 放在仓库里任何位置都能用。
+- **应用要放在引擎目录里运行**（仓库，或解压出来的网页版安装包）：它向上找同时有 `blueprint/`、`tools/mac_env.sh`、`requirements.txt` 的目录（先按应用自身的路径找，再按工作目录找）。
+- **第一次打开自己准备环境**：没有 `.venv` 时跑 `tools/mac_env.sh` 的 `prepare_env`（和双击启动文件同一套：找 Python 3.10+，没有就下载并打开安装器；建 `.venv`、装依赖），进度显示在左栏底部。引擎一启动就退出时（多半是依赖缺了）会补装一遍再试一次。
 - 引擎出错退出时，原因显示在左栏底部，同时输出到终端。`--port 0` 让引擎自己挑空闲端口，端口从 stdout 的「界面已启动」那一行解析。
 - 退出应用或收到终止信号时都会先停掉引擎，不会留在后台占端口。
 - 依赖钉在具体 commit（lobe-mygo `5b3ecde8`、mygo `9233663736ca`，见 `go.mod`）。升级前先全量回归：`go vet ./... && go test ./...`，再打包把上面每个功能点一遍。
