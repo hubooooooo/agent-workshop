@@ -19,9 +19,28 @@ DEFAULT_MODEL = "claude-sonnet-4-6"   # 与 .env.example、scaffold 保持一致
 DEFAULT_OPENAI_MODEL = "gpt-6-luna"   # API_FORMAT=openai 且没填 MODEL_ID 时用；与 providers.py 一致
 
 
+ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+
+
 def load_config() -> None:
+    """读引擎目录的 .env。
+
+    .env 里填了真实 Key 时，模型配置（Key、接口地址、模型名、接口格式）一律以 .env 为准：
+    终端里已经设好的同名环境变量不算数，.env 没写的那几项也清掉。否则在某些 AI 编程工具里运行时，
+    工具自己设的 ANTHROPIC_BASE_URL 会盖过 .env，请求发到别的服务商，表现为「Key 无效（401）」。
+    .env 没有 Key 时照旧用环境变量（只靠环境变量配置的用法不受影响）；其余变量（BLUEPRINT_* 等）不动。
+    """
     from dotenv import load_dotenv
-    load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=False)
+    from blueprint import providers
+    load_dotenv(ENV_FILE, override=False)
+    env = providers.read_env(ENV_FILE)
+    if not providers.is_real_key(providers.current_config(env)["key"]):
+        return
+    for name in (*providers.MANAGED, "ANTHROPIC_AUTH_TOKEN"):
+        if env.get(name):
+            os.environ[name] = env[name]
+        else:
+            os.environ.pop(name, None)
 
 
 def api_format() -> str:

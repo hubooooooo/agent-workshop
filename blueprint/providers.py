@@ -28,7 +28,8 @@ PROVIDERS = {
 for _p in PROVIDERS.values():
     _p.setdefault("format", "anthropic")
 PROVIDER_BY_KEY = {p["key"]: p for p in PROVIDERS.values()}
-_MANAGED = ("API_FORMAT", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL", "MODEL_ID")
+MANAGED = ("API_FORMAT", "ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "OPENAI_API_KEY", "OPENAI_BASE_URL", "MODEL_ID")
+_MANAGED = MANAGED  # 旧名，保留兼容
 
 _PLACEHOLDER_MARKERS = ("xxx", "your", "placeholder")
 

@@ -80,7 +80,9 @@ func sessionView(c *ui.Context, key, endpoint, hint, placeholder string, cs chat
 		markdown.Markdown(c, breaks(cs.Intro), markdown.MarkdownProps{Variant: markdown.Chat})
 		for i, m := range cs.Msgs {
 			if m.Role == "user" {
-				userBubble(c, m.Text)
+				userMessage(c, key, i, m.Text, !cs.Streaming && !cs.Finished, func(text string) {
+					go app.chatEditResend(key, endpoint, i, text)
+				})
 			} else if m.Text != "" {
 				markdown.Markdown(c, breaks(m.Text), markdown.MarkdownProps{Variant: markdown.Chat})
 				last := i == len(cs.Msgs)-1 && !cs.Streaming && !cs.Finished
@@ -372,10 +374,10 @@ func playPanel(c *ui.Context, slug string) {
 	}
 	chatColumnScroll(c, "play:"+slug, func() {
 		markdown.Markdown(c, breaks(intro), markdown.MarkdownProps{Variant: markdown.Chat})
-		for _, m := range messages {
+		for i, m := range messages {
 			switch m.Role {
 			case "user":
-				userBubble(c, m.Text)
+				userMessage(c, "play:"+slug, i, m.Text, !streaming, func(text string) { go app.playEditResend(i, text) })
 			case "step":
 				stepCard(c, m.Step)
 			default:
@@ -406,6 +408,66 @@ func playPanel(c *ui.Context, slug string) {
 		go app.sendPlay(text)
 	}
 	writeBack(&app.playDraft, draftBefore, draft)
+}
+
+// userMessage 用户说的话。鼠标停在上面时可以「修改」：改完重新发送，这句之后的对话都丢掉重来（和网页版一样）。
+func userMessage(c *ui.Context, key string, idx int, text string, canEdit bool, resend func(string)) {
+	app.mu.Lock()
+	editing := app.editKey == key && app.editIdx == idx
+	draft, gen := app.editText, app.editGen
+	app.mu.Unlock()
+	if !editing || !canEdit {
+		box := ui.Column(c).AlignSelf(ui.End).AlignItems(ui.End).Gap(2)
+		box.Children(func() {
+			userBubble(c, text)
+			if canEdit {
+				ui.Row(c).Opacity(0.85).Children(func() {
+					action.ActionIcon(c, lucide.Pencil(), action.ActionIconProps{Title: "修改", Size: theme.Small}).OnClick(func() {
+						app.mu.Lock()
+						app.editKey, app.editIdx, app.editText = key, idx, text
+						app.editGen++
+						app.mu.Unlock()
+						app.invalidate()
+					})
+				})
+			}
+		})
+		return
+	}
+	edited := draft
+	ui.Column(c).AlignSelf(ui.Stretch).Gap(8).Children(func() {
+		ui.Column(c).Children(func() {
+			c.Key(fmt.Sprintf("edit-%d", gen))
+			field.TextArea(c, &edited, field.TextAreaProps{MinRows: 1, MaxRows: 8})
+		})
+		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+			action.Button(c, "取消", action.ButtonProps{Size: theme.Small}).OnClick(cancelEdit)
+			ok := strings.TrimSpace(edited) != ""
+			b := action.Button(c, "重新发送", action.ButtonProps{Variant: action.Primary, Size: theme.Small})
+			b.Disabled(!ok)
+			if ok {
+				b.OnClick(func() {
+					app.mu.Lock()
+					t := app.editText
+					app.mu.Unlock()
+					cancelEdit()
+					resend(t)
+				})
+			}
+		})
+	})
+	if edited != draft {
+		app.mu.Lock()
+		app.editText = edited
+		app.mu.Unlock()
+	}
+}
+
+func cancelEdit() {
+	app.mu.Lock()
+	app.editKey, app.editIdx, app.editText = "", 0, ""
+	app.mu.Unlock()
+	app.invalidate()
 }
 
 // replyActions 回复下面的「复制」，最后一条还有「重新生成」，和网页版一样。

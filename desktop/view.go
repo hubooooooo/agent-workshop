@@ -237,9 +237,9 @@ func newProductView(c *ui.Context) {
 			ui.Scroll(c).Grow(1).Basis(0).TrackScroll(followEnd("new-product")).Children(func() {
 				chatColumn(c, func() {
 					ui.Column(c).Grow(1).Basis(0).MaxWidth(chatWidth).Padding(24, 0).Gap(14).Children(func() {
-						for _, m := range messages {
+						for i, m := range messages {
 							if m.Role == "user" {
-								userBubble(c, m.Text)
+								userMessage(c, "new-product", i, m.Text, !streaming, func(text string) { go app.chatIntakeEditResend(i, text) })
 							} else {
 								markdown.Markdown(c, breaks(m.Text), markdown.MarkdownProps{Variant: markdown.Chat})
 							}

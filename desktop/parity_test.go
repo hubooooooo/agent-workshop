@@ -233,3 +233,35 @@ func TestProductListParsesPendingVersions(t *testing.T) {
 		t.Fatalf("products=%+v err=%v", products, err)
 	}
 }
+
+// 「修改」第 idx 条后重新发送：它和之后的对话丢掉，引擎收到的是改过的历史。
+func TestEditResendTruncatesHistory(t *testing.T) {
+	var got struct {
+		Messages []ChatMsg `json:"messages"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = io.WriteString(w, `{"type":"text","delta":"记下了。"}`+"\n"+`{"type":"done"}`+"\n")
+	}))
+	defer srv.Close()
+	app.mu.Lock()
+	saved := app.engineURL
+	app.engineURL = srv.URL
+	cs := app.chatFor("answers:e:fp", "answers:e:", "开场白", nil)
+	cs.Msgs = []ChatMsg{{Role: "user", Text: "3 岁"}, {Role: "assistant", Text: "记下了。第 2 题"}, {Role: "user", Text: "网页"}, {Role: "assistant", Text: "记下了。第 3 题"}}
+	app.mu.Unlock()
+	defer func() {
+		app.mu.Lock()
+		app.engineURL = saved
+		delete(app.chats, "answers:e:fp")
+		app.mu.Unlock()
+	}()
+	app.chatEditResend("answers:e:fp", "/api/products/e/chat", 2, "小程序")
+	if len(got.Messages) != 4 || got.Messages[3].Text != "小程序" || got.Messages[1].Text != "3 岁" {
+		t.Fatalf("engine should get intro + first two turns + the edited answer, got %+v", got.Messages)
+	}
+	if len(cs.Msgs) != 4 || cs.Msgs[2].Text != "小程序" || cs.Msgs[3].Text != "记下了。" {
+		t.Fatalf("history after resend = %+v", cs.Msgs)
+	}
+}

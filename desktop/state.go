@@ -259,6 +259,12 @@ type AppState struct {
 	prdDocErr  string
 	prdDocOpen bool
 
+	// 正在「修改」的那句话：哪段对话、第几条、改成什么
+	editKey  string
+	editIdx  int
+	editText string
+	editGen  int
+
 	// 右下角的提示，下一帧由界面线程弹出
 	toasts []toastMsg
 
