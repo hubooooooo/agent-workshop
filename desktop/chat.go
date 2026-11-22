@@ -136,6 +136,7 @@ func (s *AppState) chatSend(key, endpoint, text string) {
 	}
 	s.mu.Unlock()
 	s.invalidate()
+	s.saveProduct(slugOfChatKey(key))
 }
 
 // fillCard 把卡片的参数复制成可以改的字段。
@@ -198,6 +199,7 @@ func (s *AppState) chatRestart(key string) {
 	}
 	s.mu.Unlock()
 	s.invalidate()
+	go s.saveProduct(slugOfChatKey(key))
 }
 
 // confirmAnswers 「保存并重新推导方案」：回答写进需求文档，启动推导任务。
@@ -261,7 +263,8 @@ func (s *AppState) finishCard(cs *chatSession, slug string, data map[string]any,
 		}
 	}
 	s.mu.Unlock()
-	s.fetchDetail(slug) // 拿到正在跑的任务，接着轮询进度
+	go s.saveProduct(slug) // 确认过的对话不再留
+	s.fetchDetail(slug)    // 拿到正在跑的任务，接着轮询进度
 }
 
 // -- 试玩里的「这里不对」 ------------------------------------------------------
@@ -303,6 +306,7 @@ func (s *AppState) saveNote(slug string, msgID int, comment string) {
 	s.notes[slug] = append(notes, playNote{ID: msgID, Said: said, Reply: reply, Comment: comment})
 	s.noteOpen, s.noteDraft = 0, ""
 	s.invalidate()
+	go s.saveProduct(slug)
 }
 
 func (s *AppState) removeNote(slug string, msgID int) {
@@ -316,6 +320,7 @@ func (s *AppState) removeNote(slug string, msgID int) {
 	}
 	s.notes[slug] = notes
 	s.invalidate()
+	go s.saveProduct(slug)
 }
 
 // carryNotes 「带去加新需求 →」：把记下的几处整理成一段草稿，放进加新需求的输入框。
@@ -334,6 +339,7 @@ func (s *AppState) carryNotes(slug string) {
 	delete(s.notes, slug)
 	s.productTab = "revise"
 	s.invalidate()
+	go s.saveProduct(slug)
 }
 
 // playEditResend 试玩里「修改」后重新发送：这句及之后的动作和回复丢掉，改过的话重新发。
@@ -393,7 +399,9 @@ func (s *AppState) restartPlay(slug string) {
 	s.playInputGen++
 	s.playGen++
 	s.noteOpen = 0
+	delete(s.playSaved, slug)
 	s.mu.Unlock()
+	s.saveProduct(slug)
 	s.startPlay(slug)
 }
 
