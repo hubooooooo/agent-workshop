@@ -287,6 +287,9 @@ agent 需要模型支持工具调用。DeepSeek 实测支持（Anthropic 格式�
 <tr><td><code>BLUEPRINT_AGENT=off</code></td><td>推导方案、检查项目都不用 agent，走固定流程</td></tr>
 <tr><td><code>BLUEPRINT_PLAY_AGENT=off</code></td><td>试玩不用 agent，改为一次调用编出整轮（更快，但规矩只靠提示词约束）</td></tr>
 <tr><td><code>BLUEPRINT_TIMEOUT=300</code></td><td>单次请求超时秒数，默认 120；经中转的慢模型容易超时时调大</td></tr>
+<tr><td><code>BLUEPRINT_MAX_OUTPUT_TOKENS=32000</code></td><td>单次回复最多多少 tokens，默认 16000。带思考过程的模型（如 deepseek-v4）思考也算在内，PRD 很长时可能不够，报错会提示调大到多少</td></tr>
+<tr><td><code>BLUEPRINT_VOTE=off</code></td><td>关掉特征判断的「另外判断两次、三票取多数」，每次推导少 2 次小调用，但结果更容易波动</td></tr>
+<tr><td><code>BLUEPRINT_OUT=/某个目录</code></td><td>产品和检查结果存到别的目录，默认是引擎目录下的 <code>out/</code>（命令行和浏览器界面都生效）</td></tr>
 </table>
 
 参考用量：
@@ -404,7 +407,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件，选�
 .venv/bin/python -m blueprint eval --real     # 真实模型特征一致率
 .venv/bin/python -m blueprint eval --real-audit --repeat 3   # 真实模型跑反向检查题库
 .venv/bin/python tools/refresh_examples.py    # 改提示词后重新生成示例
-.venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-student.zip（含打好的 agent-prd）
+.venv/bin/python tools/package_student.py     # 生成 dist/agent-workshop-web.zip（网页版安装包，含打好的 agent-prd）
 .venv/bin/python tools/package_skill.py       # 生成 dist/agent-prd.skill 和 dist/agent-prd.zip
 claude plugin validate ./plugins/agent-workshop   # 检查插件；改了技能记得升 plugin.json 的 version
 cd desktop && go vet ./... && go test ./...       # 桌面版测试；运行和打包见 desktop/README.md

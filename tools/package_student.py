@@ -96,7 +96,7 @@ def package(root: Path, output: Path) -> tuple[int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-o", "--out", type=Path, default=ROOT / "dist/agent-workshop-student.zip")
+    parser.add_argument("-o", "--out", type=Path, default=ROOT / "dist/agent-workshop-web.zip")
     args = parser.parse_args()
     try:
         count, size = package(ROOT, args.out)
