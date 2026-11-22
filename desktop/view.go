@@ -254,12 +254,12 @@ func planPanel(c *ui.Context) {
 			if plan.OneLiner != "" && plan.OneLiner != plan.Title {
 				ui.Text(c, plan.OneLiner).FontSize(14).TextColor(tk.TextSecondary)
 			}
-			if plan.Runner != "" || plan.Model != "" {
-				ui.Row(c).Gap(6).Children(func() {
-					if plan.Runner != "" {
-						display.Tag(c, plan.Runner, display.TagProps{Size: theme.Small})
-					}
-					if plan.Model != "" {
+			// 只标模型名；runner 是接口格式（anthropic / openai），对用户没有意义。离线演示单独标出来，和网页版一致。
+			if plan.Runner == "mock" || plan.Model != "" {
+				ui.Row(c).Children(func() {
+					if plan.Runner == "mock" {
+						display.Tag(c, "离线演示", display.TagProps{Color: display.TagWarning, Size: theme.Small})
+					} else {
 						display.Tag(c, plan.Model, display.TagProps{Size: theme.Small})
 					}
 				})
