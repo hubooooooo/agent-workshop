@@ -221,3 +221,37 @@ def test_env_file_without_real_key_keeps_environment(monkeypatch, tmp_path):
     llm.load_config()
     assert os.environ["ANTHROPIC_API_KEY"] == "sk-real-from-shell"
     assert os.environ["ANTHROPIC_BASE_URL"] == "https://api.deepseek.com/anthropic"
+
+
+def test_resume_hint_only_suggests_resume_where_it_exists():
+    """只有 plan、audit 收 --resume。回归：init --plan 被打断时曾提示「加 --resume」，照做会直接报参数错误；
+    教学版的 revise 失败时需求文档已经升版，重跑 revise 会再升一版，所以提示改用 plan --resume。"""
+    from argparse import Namespace
+    from blueprint.cli import build_parser, resume_hint
+    assert "--resume" in resume_hint(Namespace(cmd="plan"))
+    assert "--resume" in resume_hint(Namespace(cmd="audit"))
+    hint = resume_hint(Namespace(cmd="init", plan=True, name="酒馆 搭子"))
+    assert "blueprint plan" in hint and "酒馆-搭子" in hint and hint.endswith("--resume")
+    revise = resume_hint(Namespace(cmd="revise", workspace="out/酒馆搭子"))
+    assert "blueprint plan" in revise and "out/酒馆搭子/PRD.md" in revise and "不要重跑 revise" in revise
+    assert "--resume" not in resume_hint(Namespace(cmd="verify"))
+    build_parser().parse_args(["plan", "out/x/PRD.md", "-o", "out/x", "--resume"])
+
+
+def test_api_error_prints_a_hint_instead_of_a_traceback(monkeypatch, capsys):
+    """回归：教学版接口报错时直接抛出整段堆栈，学生看不懂；现在给一句原因和续跑命令。"""
+    import anthropic
+    import httpx
+    from blueprint import cli
+
+    def failing_plan(args):
+        raise anthropic.APIConnectionError(request=httpx.Request("POST", "https://example.invalid/v1/messages"))
+
+    parser = cli.build_parser()
+    parser._subparsers._group_actions[0].choices["plan"].set_defaults(func=failing_plan)
+    monkeypatch.setattr(cli, "build_parser", lambda: parser)
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(["plan", "一句话点子", "-o", "out/x"])
+    assert exit_info.value.code == 4
+    out = capsys.readouterr().out
+    assert "模型接口报错" in out and "原命令加 --resume" in out
