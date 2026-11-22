@@ -186,3 +186,38 @@ def test_architecture_diagram_reads_layer_names_and_stays_short():
     assert nodes["⑦ 基础设施层"] == "第一版部署形态：单进程服务"
     chart = render_mermaid("t", [], tools, {}, "A & B <c>")
     assert "#38;" not in chart and "A ＆ B ＜c＞" in chart
+
+
+def test_env_file_with_real_key_wins_over_inherited_environment(monkeypatch, tmp_path):
+    """回归：课堂上由 AI 编程工具在终端里运行命令，有的工具自己设了 ANTHROPIC_BASE_URL，曾经盖过 .env 里
+    DeepSeek 的地址，请求发到别的服务商，报「Key 无效（401）」。.env 有真实 Key 时，模型配置以 .env 为准。"""
+    import os
+    from blueprint import llm
+    env_file = tmp_path / ".env"
+    env_file.write_text("ANTHROPIC_API_KEY=sk-real-deepseek\nMODEL_ID=deepseek-v4-flash\n"
+                        "ANTHROPIC_BASE_URL=https://api.deepseek.com/anthropic\n", encoding="utf-8")
+    monkeypatch.setattr(llm, "ENV_FILE", env_file)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-from-the-tool")
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "token-from-the-tool")
+    monkeypatch.setenv("BLUEPRINT_TIMEOUT", "300")
+    llm.load_config()
+    assert os.environ["ANTHROPIC_BASE_URL"] == "https://api.deepseek.com/anthropic"
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-real-deepseek"
+    assert os.environ["MODEL_ID"] == "deepseek-v4-flash"
+    assert "ANTHROPIC_AUTH_TOKEN" not in os.environ
+    assert os.environ["BLUEPRINT_TIMEOUT"] == "300"
+
+
+def test_env_file_without_real_key_keeps_environment(monkeypatch, tmp_path):
+    """.env 里还是模板的占位 Key 时，照旧用环境变量里的配置。"""
+    import os
+    from blueprint import llm
+    env_file = tmp_path / ".env"
+    env_file.write_text("ANTHROPIC_API_KEY=sk-ant-xxx\nMODEL_ID=claude-sonnet-4-6\n", encoding="utf-8")
+    monkeypatch.setattr(llm, "ENV_FILE", env_file)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-real-from-shell")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://api.deepseek.com/anthropic")
+    llm.load_config()
+    assert os.environ["ANTHROPIC_API_KEY"] == "sk-real-from-shell"
+    assert os.environ["ANTHROPIC_BASE_URL"] == "https://api.deepseek.com/anthropic"

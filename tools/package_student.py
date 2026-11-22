@@ -26,7 +26,7 @@ PATTERNS = (
     "evals/README.md", "evals/forward/*/input.md", "evals/forward/*/expected.json",
     "evals/reverse/*/expected.json", "evals/reverse/*/target.txt",
     "evals/reverse/*/README.md", "evals/reverse/*/src/*.py",
-    "tests/test_*.py", "tools/package_student.py", "tools/wizard.py", "tools/refresh_examples.py",
+    "tests/test_*.py", "tests/conftest.py", "tools/package_student.py", "tools/wizard.py", "tools/refresh_examples.py",
 )
 
 
@@ -70,7 +70,7 @@ def package(root: Path, output: Path) -> tuple[int, int]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-o", "--out", type=Path, default=ROOT / "dist/agent-workshop-student.zip")
+    parser.add_argument("-o", "--out", type=Path, default=ROOT / "dist/agent-workshop-teaching.zip")
     args = parser.parse_args()
     try:
         count, size = package(ROOT, args.out)
