@@ -6,6 +6,13 @@
 
 ## 能做什么
 
+<table>
+<tr>
+<td width="50%"><img src="../docs/images/desktop-plan.png" alt="方案页"></td>
+<td width="50%"><img src="../docs/images/desktop-play.png" alt="试玩页"></td>
+</tr>
+</table>
+
 左栏是四个入口（产品、新建产品、项目检查、模型设置）和「我的产品」列表，底部一个小圆点显示引擎状态（启动中 / 已连接 / 出错）。
 
 - **产品页**：标题栏中间切换 PRD / 方案 / 试玩，右边是交接状态、导出交接包、在 Finder 里打开产品文件夹。
