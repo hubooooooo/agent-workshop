@@ -53,3 +53,5 @@ def test_student_package_ships_common_bootstrap():
     names = {p.relative_to(ROOT).as_posix() for p in mod.collect_files(ROOT)}
     assert "common/bootstrap.py" in names
     assert "common/__init__.py" in names
+    # 测试要和 conftest 一起发：没有它，填过 Key 的使用者跑包里的测试会读到自己的 .env，几条测试因此失败
+    assert "tests/conftest.py" in names
