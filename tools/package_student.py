@@ -74,8 +74,27 @@ def skill_archives(root: Path) -> dict[str, bytes]:
     return out
 
 
-def package(root: Path, output: Path) -> tuple[int, int]:
+def desktop_app_files(app: Path) -> list[Path]:
+    """检查要放进包里的桌面版（.app）并列出它的文件。必须是 mygo 打好的应用包，不能有符号链接。"""
+    if app.suffix != ".app" or not app.is_dir():
+        raise ValueError(f"桌面版要给 .app 文件夹：{app}")
+    if not (app / "Contents" / "Info.plist").is_file():
+        raise ValueError(f"不是完整的应用包（缺 Contents/Info.plist）：{app}")
+    binaries = [p for p in (app / "Contents" / "MacOS").glob("*") if p.is_file() and os.access(p, os.X_OK)]
+    if not binaries:
+        raise ValueError(f"应用包里没有可执行文件（Contents/MacOS/）：{app}")
+    files = []
+    for path in sorted(app.rglob("*")):
+        if path.is_symlink():
+            raise ValueError(f"桌面版里不能有符号链接：{path.relative_to(app)}")
+        if path.is_file():
+            files.append(path)
+    return files
+
+
+def package(root: Path, output: Path, desktop_app: Path | None = None) -> tuple[int, int]:
     files = collect_files(root)
+    app_files = desktop_app_files(desktop_app) if desktop_app else []
     if output.resolve() in {path.resolve() for path in files}:
         raise ValueError("输出路径不能覆盖分发源文件")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -88,21 +107,28 @@ def package(root: Path, output: Path) -> tuple[int, int]:
             # 打好的 agent-prd：学生用 claude.ai 上传 .skill，用其他 AI 工具就解压 .zip，不用自己打包
             for name, data in skill_archives(root).items():
                 archive.writestr("agent-workshop/" + name, data)
+            # 桌面版放在最外层，和「启动界面.command」挨着：它向上找引擎目录，第一次打开时自己准备 Python 环境。
+            # archive.write 会带上文件权限，可执行文件解压出来还能运行。
+            for path in app_files:
+                archive.write(path, f"agent-workshop/{desktop_app.name}/" + path.relative_to(desktop_app).as_posix())
         os.replace(temporary, output)
     finally:
         Path(temporary).unlink(missing_ok=True)
-    return len(files), output.stat().st_size
+    return len(files) + len(app_files), output.stat().st_size
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-o", "--out", type=Path, default=ROOT / "dist/agent-workshop-web.zip")
+    parser.add_argument("--desktop-app", type=Path,
+                        help="把打好的桌面版放进包里，如 desktop/dist/darwin-universal/Agent 工坊.app（发版时用通用包）")
     args = parser.parse_args()
     try:
-        count, size = package(ROOT, args.out)
+        count, size = package(ROOT, args.out, args.desktop_app)
     except (OSError, ValueError) as exc:
         parser.exit(1, f"打包失败：{exc}\n")
     print(f"已生成：{args.out.resolve()}（{count} 个文件，{size / 1024:.1f} KiB）")
+    print(f"   桌面版：{args.desktop_app.name if args.desktop_app else '没有放进去（发版时加 --desktop-app）'}")
 
 
 if __name__ == "__main__":

@@ -209,10 +209,11 @@ type AppState struct {
 
 	page Page
 
-	engineURL string // 解析到的引擎地址，空 = 还没起来
-	engineErr string // 引擎起不来时的原因（给人看）
-	engineCmd *exec.Cmd
-	quitting  bool // 自己要停引擎时置上，退出原因就不当成「引擎退出了」报错
+	engineURL    string // 解析到的引擎地址，空 = 还没起来
+	engineErr    string // 引擎起不来时的原因（给人看）
+	engineStatus string // 启动前准备环境时的进度（左栏底部显示）
+	engineCmd    *exec.Cmd
+	quitting     bool // 自己要停引擎时置上，退出原因就不当成「引擎退出了」报错
 
 	products []Product
 	selected string // 选中产品的 slug

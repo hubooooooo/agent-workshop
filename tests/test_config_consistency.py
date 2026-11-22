@@ -55,3 +55,50 @@ def test_student_package_ships_common_bootstrap():
     assert "common/__init__.py" in names
     # 测试要和 conftest 一起发：没有它，填过 Key 的使用者跑包里的测试会读到自己的 .env，几条测试因此失败
     assert "tests/conftest.py" in names
+
+
+def _load_package_student():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("package_student", ROOT / "tools/package_student.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_student_package_can_ship_the_desktop_app(tmp_path):
+    """桌面版放在包的最外层、和启动文件挨着；可执行文件解压后还能运行（权限位要带上）。"""
+    import stat
+    import zipfile
+    mod = _load_package_student()
+    app = tmp_path / "Agent 工坊.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    (app / "Contents" / "Info.plist").write_text("<plist/>", encoding="utf-8")
+    exe = app / "Contents" / "MacOS" / "Agent 工坊"
+    exe.write_bytes(b"\xcf\xfa\xed\xfe")
+    exe.chmod(0o755)
+    out = tmp_path / "web.zip"
+    mod.package(ROOT, out, app)
+    with zipfile.ZipFile(out) as z:
+        names = set(z.namelist())
+        info = z.getinfo("agent-workshop/Agent 工坊.app/Contents/MacOS/Agent 工坊")
+    assert "agent-workshop/启动界面.command" in names
+    assert "agent-workshop/Agent 工坊.app/Contents/Info.plist" in names
+    assert (info.external_attr >> 16) & stat.S_IXUSR
+
+
+def test_desktop_app_must_be_a_real_bundle_without_symlinks(tmp_path):
+    import pytest
+    mod = _load_package_student()
+    with pytest.raises(ValueError):
+        mod.desktop_app_files(tmp_path / "missing.app")
+    app = tmp_path / "Agent 工坊.app"
+    (app / "Contents" / "MacOS").mkdir(parents=True)
+    (app / "Contents" / "Info.plist").write_text("<plist/>", encoding="utf-8")
+    with pytest.raises(ValueError, match="可执行文件"):
+        mod.desktop_app_files(app)
+    exe = app / "Contents" / "MacOS" / "run"
+    exe.write_bytes(b"x")
+    exe.chmod(0o755)
+    (app / "Contents" / "link").symlink_to(exe)
+    with pytest.raises(ValueError, match="符号链接"):
+        mod.desktop_app_files(app)

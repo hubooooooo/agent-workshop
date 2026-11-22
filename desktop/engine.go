@@ -18,6 +18,7 @@ import (
 var startupLine = regexp.MustCompile(`界面已启动：http://127\.0\.0\.1:(\d+)/`)
 
 // startEngine 拉起 Python 引擎并等它打印端口；期间把 products 列表也取回来。
+// 第一次打开（解压出来还没有 .venv）时先准备 Python 环境，和双击「启动界面.command」走同一套脚本。
 func (s *AppState) startEngine(mock bool) {
 	root, err := findRepoRoot()
 	if err != nil {
@@ -28,14 +29,78 @@ func (s *AppState) startEngine(mock bool) {
 		return
 	}
 	py := filepath.Join(root, ".venv", "bin", "python")
+	prepared := false
 	if _, err := os.Stat(py); err != nil {
-		s.mu.Lock()
-		s.engineErr = "找不到 " + py + "，先运行 setup.sh 或让引擎装好 .venv"
-		s.mu.Unlock()
-		s.invalidate()
+		if !s.prepareEnv(root) {
+			return
+		}
+		prepared = true
+	}
+	if s.launchEngine(root, py, mock) || prepared {
 		return
 	}
+	// 引擎一启动就退出，多半是依赖没装全（比如更新后 requirements.txt 多了一项）：补装一遍再试一次。
+	s.mu.Lock()
+	s.engineErr, s.quitting = "", false
+	s.mu.Unlock()
+	if s.prepareEnv(root) {
+		s.launchEngine(root, py, mock)
+	}
+}
 
+// prepareEnv 跑 tools/mac_env.sh 的 prepare_env：找 Python 3.10+（没有就下载并打开安装器）、建 .venv、装依赖。
+// 进度一行行显示在左栏底部。返回环境是否就绪。
+func (s *AppState) prepareEnv(root string) bool {
+	s.setEngineStatus("正在准备 Python 环境（第一次大约 1 分钟）…")
+	cmd := exec.Command("/bin/bash", "-c", "source tools/mac_env.sh && prepare_env")
+	cmd.Dir = root
+	cmd.Stdin = nil // 脚本里「按回车关闭」读不到输入，直接往下走
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		s.failEngine("准备 Python 环境失败：" + err.Error())
+		return false
+	}
+	cmd.Stderr = cmd.Stdout
+	if err := cmd.Start(); err != nil {
+		s.failEngine("准备 Python 环境失败：" + err.Error())
+		return false
+	}
+	var last string
+	noPython := false
+	sc := bufio.NewScanner(io.TeeReader(out, os.Stdout))
+	for sc.Scan() {
+		line := strings.TrimSpace(strings.TrimPrefix(sc.Text(), "==>"))
+		if line == "" {
+			continue
+		}
+		if strings.Contains(line, "还没安装 Python") {
+			noPython = true
+		}
+		last = line
+		s.setEngineStatus(line)
+	}
+	err = cmd.Wait()
+	s.setEngineStatus("")
+	switch {
+	case noPython:
+		s.failEngine("这台 Mac 还没有 Python 3.10+：已经帮你下载并打开了 Python 安装器（没弹出来就到 python.org 下载 3.12）。装好后重新打开本应用。")
+		return false
+	case err != nil:
+		s.failEngine("准备 Python 环境失败：" + last)
+		return false
+	}
+	return true
+}
+
+func (s *AppState) setEngineStatus(text string) {
+	s.mu.Lock()
+	s.engineStatus = text
+	s.mu.Unlock()
+	s.invalidate()
+}
+
+// launchEngine 起引擎进程、等它报端口。引擎一启动就退出时返回 false（调用方可以补装依赖再试）。
+func (s *AppState) launchEngine(root, py string, mock bool) bool {
 	args := []string{"-m", "blueprint", "ui", "--no-browser", "--port", "0"}
 	if mock {
 		args = append(args, "--mock")
@@ -50,13 +115,13 @@ func (s *AppState) startEngine(mock bool) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		s.failEngine("起引擎失败：" + err.Error())
-		return
+		return true
 	}
 	s.setProcess(cmd)
 
 	if err := cmd.Start(); err != nil {
 		s.failEngine("起引擎失败：" + err.Error())
-		return
+		return true
 	}
 
 	// 引擎退出时把原因写进状态（窗口关了、引擎崩了都能在界面上看到）。
@@ -101,7 +166,7 @@ scan:
 		case line, ok := <-lines:
 			if !ok {
 				s.failEngine("引擎刚启动就退出了，看终端里的报错（常见原因：依赖没装好、.venv 坏了）")
-				return
+				return false
 			}
 			if m := startupLine.FindStringSubmatch(line); m != nil {
 				port = m[1]
@@ -109,7 +174,7 @@ scan:
 			}
 		case <-deadline:
 			s.failEngine("引擎 30 秒内没起来，看终端里的引擎日志")
-			return
+			return true
 		}
 	}
 
@@ -119,6 +184,7 @@ scan:
 	s.invalidate()
 	s.refreshProducts()
 	s.loadConfig()
+	return true
 }
 
 func (s *AppState) failEngine(msg string) {
@@ -170,7 +236,7 @@ func (s *AppState) stopEngine() {
 // -- 仓库定位 ----------------------------------------------------------------
 
 // findRepoRoot 先按应用自身所在位置（打包成 .app 后从 Finder 启动时 cwd 是 /），
-// 再按当前目录，向上找带 blueprint/ 和 .venv/ 的仓库根。
+// 再按当前目录，向上找引擎目录（带 blueprint/ 和 tools/mac_env.sh；.venv 没有的话启动时会自己建）。
 func findRepoRoot() (string, error) {
 	starts := []string{}
 	if exe, err := os.Executable(); err == nil {
@@ -194,15 +260,16 @@ func findRepoRoot() (string, error) {
 			dir = parent
 		}
 	}
-	return "", fmt.Errorf("没找到引擎目录（blueprint/ 与 .venv/），把本应用放进 agent-workshop 仓库里运行")
+	return "", fmt.Errorf("没找到引擎：本应用要放在解压出来的 agent-workshop 文件夹里（和「启动界面.command」放在一起）才能用")
 }
 
 func isRepoRoot(dir string) bool {
-	if st, err := os.Stat(filepath.Join(dir, "blueprint", "__main__.py")); err != nil || st.IsDir() {
-		return false
+	for _, rel := range []string{"blueprint/__main__.py", "tools/mac_env.sh", "requirements.txt"} {
+		if st, err := os.Stat(filepath.Join(dir, rel)); err != nil || st.IsDir() {
+			return false
+		}
 	}
-	_, err := os.Stat(filepath.Join(dir, ".venv", "bin", "python"))
-	return err == nil
+	return true
 }
 
 // -- HTTP 客户端 -------------------------------------------------------------
