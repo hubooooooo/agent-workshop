@@ -32,7 +32,7 @@
 <tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/teaching">下载</a> · <a href="https://github.com/hubooooooo/agent-workshop/tree/v1-maint">浏览源码</a></td></tr>
 <tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a></td></tr>
 <tr><td><b>AI 技能版</b></td><td>一个叫 agent-prd 的技能：装进你自己的 AI 工具，对话追问后写出 <code>PRD.md</code> 和 <code>方案.md</code>。不用下载项目、不用 Python、不用另配 API Key</td><td>已经在用 AI 工具的人，想最快拿到需求文档和技术方案</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd">下载</a> · <a href="plugins/agent-workshop/skills/agent-prd/README.md">各工具装法</a></td></tr>
-<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生重画，用同一个引擎：PRD、方案、试玩、新建产品、项目检查、模型设置都能用，界面固定浅色。回答问题、加新需求、版本历史、项目检查的「重新判断」还没做；还没有打包好的安装包</td><td>想试新界面、会自己打包的开发者（需要 Go）</td><td><a href="https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md">从源码打包</a></td></tr>
+<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生重画，用同一个引擎，功能和网页版一致，界面固定浅色；还没有打包好的安装包</td><td>想试新界面、会自己打包的开发者（需要 Go）</td><td><a href="https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md">从源码打包</a></td></tr>
 </table>
 
 教学版、网页版、桌面版都下载到自己电脑上运行，不是网站；AI 技能版装进你正在用的 AI 工具里，不用下载整个项目。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-workshop/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
@@ -227,16 +227,16 @@ bash setup.sh                         # 建虚拟环境、装依赖，把 .env.e
 
 ### 🖥 桌面版（Mac，预览）
 
-网页版界面的 macOS 原生重画，后台拉起同一个引擎，和网页版共用 `out/`，在哪边建的产品另一边都看得到。现在能看 PRD 和方案、试玩、新建产品、检查项目、改模型设置；回答问题、加新需求、版本历史、项目检查的「重新判断」还要用网页版。还没有安装包，需要装 Go 自己打包，步骤见[桌面版说明](https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md)。
+网页版界面的 macOS 原生重画，后台拉起同一个引擎，和网页版共用 `out/`，在哪边建的产品另一边都看得到。功能和网页版一致：概览、回答问题、试玩、加新需求、方案、版本历史、检查项目、模型设置都有，页面结构也一样。和网页版的不同只有两处：界面固定浅色；对话只保存在这次打开的应用里。还没有安装包，需要装 Go 自己打包，步骤见[桌面版说明](https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md)。
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/desktop-plan.png" alt="桌面版方案页：标题栏中间切换 PRD、方案、试玩，下面是待确认清单"></td>
-<td width="50%"><img src="docs/images/desktop-play.png" alt="桌面版试玩：开场白、用户的一句话和 AI 按方案的回应，底部是输入框"></td>
+<td width="50%"><img src="docs/images/desktop-overview.png" alt="桌面版产品概览：左边分组导航（概览、对话、方案、记录）和用量，中间是产品定位和待确认问题，右边是组件选型统计和交接包"></td>
+<td width="50%"><img src="docs/images/desktop-play.png" alt="桌面版试玩：开场白、用户的一句话、两张模拟调用工具的卡片和 AI 的回应，回复下面有「这里不对」"></td>
 </tr>
 <tr>
-<td align="center">方案：待确认清单、组件选型、架构等分节展示</td>
-<td align="center">试玩：和网页版同一个引擎</td>
+<td align="center">产品概览：和网页版一样的分组导航</td>
+<td align="center">试玩：工具卡片、「这里不对」</td>
 </tr>
 </table>
 

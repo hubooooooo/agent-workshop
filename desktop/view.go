@@ -23,7 +23,20 @@ func sidebar(c *ui.Context) {
 	selected := app.selected
 	engineErr := app.engineErr
 	up := app.engineURL != ""
+	cfgLoaded, cfgMock, cfgConfigured, cfgModel := app.cfgLoaded, app.cfgMock, app.cfgConfigured, app.cfgModel
 	app.mu.Unlock()
+	settingsDesc := ""
+	switch {
+	case !cfgLoaded:
+	case cfgMock:
+		settingsDesc = "离线演示"
+	case cfgConfigured && cfgModel != "":
+		settingsDesc = cfgModel
+	case cfgConfigured:
+		settingsDesc = "已配置模型"
+	default:
+		settingsDesc = "未配置模型"
+	}
 
 	ui.Column(c).Width(268).Shrink(0).Padding(12).Gap(8).Children(func() {
 		ui.Row(c).Height(32).Shrink(0).AlignItems(ui.Center).Justify(ui.SpaceBetween).Children(func() {
@@ -38,13 +51,19 @@ func sidebar(c *ui.Context) {
 			{Key: "products", Label: "产品", Icon: lucide.Boxes()},
 			{Key: "new", Label: "新建产品", Icon: lucide.Sparkles()},
 			{Key: "audits", Label: "项目检查", Icon: lucide.ScanSearch()},
-			{Key: "settings", Label: "模型设置", Icon: lucide.SlidersHorizontal()},
-		}, Active: navKeyOf(page)})
+			{Key: "settings", Label: "模型设置", Icon: lucide.SlidersHorizontal(), Description: settingsDesc},
+		}, Active: navKeyOf(page, selected)})
 		switch navClicked {
 		case "products":
 			app.mu.Lock()
 			app.page = PageProducts
+			app.selected = "" // 回到「我的产品」列表
+			if app.pollStop != nil {
+				close(app.pollStop)
+				app.pollStop = nil
+			}
 			app.mu.Unlock()
+			go app.refreshProducts()
 		case "new":
 			app.mu.Lock()
 			app.page = PageNew
@@ -66,6 +85,8 @@ func sidebar(c *ui.Context) {
 				desc := fmt.Sprintf("V%d · 待确认 %d", p.Version, p.Unknowns)
 				if !p.HasPlan {
 					desc = fmt.Sprintf("V%d · 还没有方案", p.Version)
+				} else if p.Unknowns == 0 {
+					desc = fmt.Sprintf("V%d · 方案已生成", p.Version)
 				}
 				items = append(items, display.ListItem{
 					Key: p.Slug, Label: p.Name, Description: desc, Icon: lucide.Boxes(),
@@ -75,7 +96,11 @@ func sidebar(c *ui.Context) {
 				ui.Text(c, "还没有产品，去「新建产品」聊一个出来。").FontSize(12).TextColor(tk.TextTertiary).Padding(4, 8)
 				return
 			}
-			clicked := display.List(c, display.ListProps{Items: items, Active: selected})
+			active := selected
+			if page != PageProducts {
+				active = ""
+			}
+			clicked := display.List(c, display.ListProps{Items: items, Active: active})
 			if clicked != "" {
 				go app.selectProduct(clicked)
 			}
@@ -96,7 +121,7 @@ func sidebar(c *ui.Context) {
 	})
 }
 
-func navKeyOf(page Page) string {
+func navKeyOf(page Page, selected string) string {
 	switch page {
 	case PageNew:
 		return "new"
@@ -105,6 +130,9 @@ func navKeyOf(page Page) string {
 	case PageAudits:
 		return "audits"
 	default:
+		if selected != "" {
+			return "" // 选中某个产品时，高亮的是下面产品列表里的那一项
+		}
 		return "products"
 	}
 }
@@ -126,251 +154,6 @@ func content(c *ui.Context) {
 	}
 }
 
-// productView 产品详情：标题栏中间是 PRD / 方案 / 试玩 分段切换，右边是交接包和工作区按钮。
-func productView(c *ui.Context) {
-	tk := theme.TokensOf(c)
-	app.mu.Lock()
-	selected := app.selected
-	prdText := app.prdText
-	prdVer := app.prdVer
-	prdErr := app.prdErr
-	loading := app.loading
-	tab := app.productTab
-	hasProducts := len(app.products) > 0
-	handoffBusy := app.handoffBusy
-	handoffStatus := app.handoffStatus
-	name := ""
-	for _, p := range app.products {
-		if p.Slug == selected {
-			name = p.Name
-		}
-	}
-	app.mu.Unlock()
-
-	pageShell(c, func() {
-		if selected == "" {
-			pageTitle(c, "产品", "")
-			return
-		}
-		// 左右两块等宽，分段控件就落在正中
-		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(8).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, name).FontSize(15).Bold().MaxLines(1)
-			if prdVer > 0 {
-				display.Tag(c, fmt.Sprintf("V%d", prdVer), display.TagProps{Size: theme.Small})
-			}
-		})
-		action.Segmented(c, &tab, []string{"PRD", "方案", "试玩"}, action.SegmentedProps{Size: theme.Small})
-		ui.Row(c).Grow(1).Basis(0).MinWidth(0).Gap(4).Justify(ui.End).AlignItems(ui.Center).Children(func() {
-			if handoffBusy {
-				ui.Text(c, "正在打包…").FontSize(12).TextColor(tk.TextTertiary).MaxLines(1)
-			} else if handoffStatus != "" {
-				ui.Text(c, handoffStatus).FontSize(12).TextColor(tk.TextTertiary).MaxLines(1)
-			}
-			action.ActionIcon(c, lucide.PackageOpen(), action.ActionIconProps{Title: "下载交接包"}).OnClick(func() {
-				go app.downloadHandoffZip(selected)
-			})
-			action.ActionIcon(c, lucide.FolderOpen(), action.ActionIconProps{Title: "在 Finder 里打开工作区"}).OnClick(func() {
-				go revealProduct(app.baseURL(), selected)
-			})
-		})
-	}, func() {
-		if selected == "" {
-			if hasProducts {
-				centerEmpty(c, display.EmptyProps{Icon: lucide.Boxes(), Title: "选一个产品",
-					Description: "在左边选一个产品，这里会显示它的 PRD 和方案，还能直接试玩。"})
-			} else {
-				centerEmpty(c, display.EmptyProps{Icon: lucide.Sparkles(), Title: "还没有产品",
-					Description: "先用对话把你的想法说清楚，引擎会帮你整理成第一个产品。",
-					Action: func() {
-						action.Button(c, "新建产品", action.ButtonProps{Variant: action.Primary}).OnClick(func() {
-							app.mu.Lock()
-							app.page = PageNew
-							app.mu.Unlock()
-						})
-					}})
-			}
-			return
-		}
-		switch tab {
-		case 0:
-			prdPanel(c, loading, prdErr, prdText)
-		case 1:
-			planPanel(c)
-		default:
-			playPanel(c)
-		}
-	})
-
-	app.mu.Lock()
-	if tab != app.productTab && tab == 2 {
-		go app.startPlay(selected)
-	}
-	app.productTab = tab
-	app.mu.Unlock()
-}
-
-// prdPanel PRD 标签页：居中的阅读列。
-func prdPanel(c *ui.Context, loading bool, prdErr, prdText string) {
-	readingScroll(c, 8, func() {
-		switch {
-		case loading:
-			mutedText(c, "读取中…")
-		case prdErr != "":
-			errorAlert(c, prdErr)
-		default:
-			markdown.Markdown(c, prdText, markdown.MarkdownProps{})
-		}
-	})
-}
-
-// planPanel 方案标签页：标题区 + 一节一张卡片（待确认、事实、组件、七层架构……）。
-func planPanel(c *ui.Context) {
-	tk := theme.TokensOf(c)
-	app.mu.Lock()
-	plan := app.plan
-	planErr := app.planErr
-	job := app.job
-	app.mu.Unlock()
-
-	readingScroll(c, 16, func() {
-		if planErr != "" {
-			errorAlert(c, planErr)
-			return
-		}
-		if plan == nil {
-			mutedText(c, "读取方案中…")
-			return
-		}
-
-		if job != nil && job.Status != "" {
-			jobBlock(c, job)
-		}
-
-		// 标题与定位
-		ui.Column(c).Gap(8).Padding(0, 0, 6, 0).Children(func() {
-			if plan.Title != "" {
-				ui.Text(c, plan.Title).FontSize(22).Bold()
-			}
-			if plan.OneLiner != "" && plan.OneLiner != plan.Title {
-				ui.Text(c, plan.OneLiner).FontSize(14).TextColor(tk.TextSecondary)
-			}
-			// 只标模型名；runner 是接口格式（anthropic / openai），对用户没有意义。离线演示单独标出来，和网页版一致。
-			if plan.Runner == "mock" || plan.Model != "" {
-				ui.Row(c).Children(func() {
-					if plan.Runner == "mock" {
-						display.Tag(c, "离线演示", display.TagProps{Color: display.TagWarning, Size: theme.Small})
-					} else {
-						display.Tag(c, plan.Model, display.TagProps{Size: theme.Small})
-					}
-				})
-			}
-		})
-
-		if len(plan.Unknowns) > 0 {
-			sectionCard(c, "待确认清单", len(plan.Unknowns), func() {
-				for i, q := range plan.Unknowns {
-					ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
-						ui.Text(c, fmt.Sprintf("%d", i+1)).FontSize(13).TextColor(tk.TextTertiary).Width(20).Shrink(0)
-						ui.Text(c, q).FontSize(14).Grow(1).Basis(0).MinWidth(0)
-					})
-				}
-			})
-		}
-
-		if len(plan.Facts) > 0 {
-			sectionCard(c, "已确认的事实", 0, func() {
-				for _, f := range plan.Facts {
-					ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
-						ui.Text(c, f.Label).FontSize(13).TextColor(tk.TextSecondary).Width(96).Shrink(0)
-						ui.Text(c, f.Value).FontSize(14).Grow(1).Basis(0).MinWidth(0)
-						display.Tag(c, f.Status, display.TagProps{Color: factColor(f.Status), Size: theme.Small})
-					})
-				}
-			})
-		}
-
-		if len(plan.Components) > 0 {
-			sectionCard(c, "组件选型", len(plan.Components), func() {
-				for _, comp := range plan.Components {
-					ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
-						ui.Column(c).Width(56).Shrink(0).Children(func() {
-							display.Tag(c, comp.Decision, display.TagProps{Color: decisionColor(comp.Decision), Size: theme.Small})
-						})
-						ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(2).Children(func() {
-							ui.Text(c, comp.OneLiner).FontSize(14).Bold()
-							if comp.Reason != "" {
-								ui.Text(c, comp.Reason).FontSize(13).TextColor(tk.TextSecondary)
-							}
-						})
-					})
-				}
-			})
-		}
-
-		if len(plan.Layers) > 0 {
-			sectionCard(c, "七层架构", 0, func() {
-				for _, layer := range plan.Layers {
-					ui.Column(c).Gap(3).Children(func() {
-						ui.Text(c, fmt.Sprintf("%s %s", layer.Num, layer.Name)).FontSize(14).Bold()
-						if layer.Detail != "" {
-							ui.Text(c, layer.Detail).FontSize(13).TextColor(tk.TextSecondary)
-						}
-						if layer.Question != "" {
-							ui.Text(c, "待确认："+layer.Question).FontSize(13).TextColor(tk.WarningText)
-						}
-					})
-				}
-			})
-		}
-
-		if len(plan.ToolList) > 0 {
-			sectionCard(c, "工具清单", len(plan.ToolList), func() {
-				for _, tool := range plan.ToolList {
-					perm := map[string]string{"allow": "直接执行", "ask": "先问人", "deny": "禁止"}[tool.Permission]
-					if perm == "" {
-						perm = tool.Permission
-					}
-					ui.Row(c).Gap(10).AlignItems(ui.Start).Children(func() {
-						ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(2).Children(func() {
-							ui.Text(c, tool.Name).FontSize(14).Bold()
-							ui.Text(c, tool.Input+" → "+tool.Output).FontSize(13).TextColor(tk.TextSecondary)
-						})
-						display.Tag(c, perm, display.TagProps{Size: theme.Small})
-					})
-				}
-			})
-		}
-
-		if len(plan.SecurityAndDegradation) > 0 {
-			sectionCard(c, "降级与安全", 0, func() { bulletList(c, plan.SecurityAndDegradation) })
-		}
-		if len(plan.Testing) > 0 {
-			sectionCard(c, "测试设计", 0, func() { bulletList(c, plan.Testing) })
-		}
-
-		if plan.SystemPrompt != "" {
-			sectionCard(c, "系统提示词草案", 0, func() {
-				ui.Column(c).Padding(12, 14).Radius(8).Background(tk.FillQuaternary).Children(func() {
-					ui.Text(c, plan.SystemPrompt).FontSize(13).TextColor(tk.TextSecondary)
-				})
-			})
-		}
-
-		if plan.Review != nil {
-			ok, _ := plan.Review["ok"].(bool)
-			sectionCard(c, "独立审稿", 0, func() {
-				ui.Row(c).Children(func() {
-					if ok {
-						display.Tag(c, "审稿通过", display.TagProps{Color: display.TagSuccess})
-					} else {
-						display.Tag(c, "审稿未通过", display.TagProps{Color: display.TagWarning})
-					}
-				})
-			})
-		}
-	})
-}
-
 // bulletList 一组要点：灰色圆点 + 正文，长句换行时和正文对齐。
 func bulletList(c *ui.Context, items []string) {
 	tk := theme.TokensOf(c)
@@ -382,135 +165,6 @@ func bulletList(c *ui.Context, items []string) {
 	}
 }
 
-// jobBlock 任务进度块：状态标签 + 最近日志。
-func jobBlock(c *ui.Context, job *JobInfo) {
-	tk := theme.TokensOf(c)
-	statusText, color := job.Status, display.TagProcessing
-	switch job.Status {
-	case "done":
-		statusText, color = "完成", display.TagSuccess
-	case "failed":
-		statusText, color = "失败", display.TagError
-	}
-	ui.Column(c).Padding(12, 14).Gap(6).Radius(10).Background(tk.FillQuaternary).Children(func() {
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			display.Tag(c, "推导任务", display.TagProps{Size: theme.Small})
-			display.Tag(c, statusText, display.TagProps{Color: color, Size: theme.Small})
-			if job.Error != "" {
-				ui.Text(c, job.Error).FontSize(13).TextColor(tk.ErrorText).Grow(1)
-			}
-		})
-		if len(job.Logs) > 0 {
-			start := len(job.Logs) - 4
-			if start < 0 {
-				start = 0
-			}
-			for _, line := range job.Logs[start:] {
-				ui.Text(c, line).FontSize(12).TextColor(tk.TextSecondary)
-			}
-		}
-	})
-}
-
-func decisionColor(decision string) display.TagColor {
-	switch decision {
-	case "必选":
-		return display.TagSuccess
-	case "二期":
-		return display.TagProcessing
-	case "放弃":
-		return display.TagInfo
-	default:
-		return display.TagWarning
-	}
-}
-
-func factColor(status string) display.TagColor {
-	switch status {
-	case "已确认":
-		return display.TagSuccess
-	case "不确定":
-		return display.TagWarning
-	default:
-		return display.TagInfo
-	}
-}
-
-// playPanel 试玩标签页：开场白 + 对话 + 模拟动作卡。还没开始时是居中的说明。
-func playPanel(c *ui.Context) {
-	app.mu.Lock()
-	intro := app.playIntro
-	playErr := app.playErr
-	messages := append([]PlayMsg(nil), app.playMessages...)
-	streaming := app.playStreaming
-	draft := app.playDraft
-	draftBefore := draft
-	inputGen := app.playInputGen
-	feedback := app.playFeedback
-	app.mu.Unlock()
-
-	// 还没开场就出错（多半是没配模型）：只给说明和出路，不摆一个发不出去的输入框
-	blocked := intro == "" && len(messages) == 0 && !streaming && playErr != ""
-	ui.Column(c).Grow(1).Basis(0).Children(func() {
-		switch {
-		case blocked:
-			p := display.EmptyProps{Icon: lucide.CircleAlert(), Title: "现在还不能试玩", Description: playErr}
-			if strings.Contains(playErr, "模型设置") {
-				p.Action = func() {
-					action.Button(c, "去模型设置", action.ButtonProps{Variant: action.Primary}).OnClick(gotoSettings)
-				}
-			}
-			centerEmpty(c, p)
-		case intro == "" && len(messages) == 0 && !streaming:
-			centerEmpty(c, display.EmptyProps{Icon: lucide.MessagesSquare(), Title: "正在准备试玩…",
-				Description: "Agent 会先说明它扮演谁、能帮你做什么，然后你以使用者的身份跟它聊。"})
-		default:
-			ui.Scroll(c).Grow(1).Basis(0).Children(func() {
-				chatColumn(c, func() {
-					ui.Column(c).Grow(1).Basis(0).MaxWidth(chatWidth).Padding(24, 0).Gap(14).Children(func() {
-						if intro != "" {
-							markdown.Markdown(c, intro, markdown.MarkdownProps{Variant: markdown.Chat})
-						}
-						for _, m := range messages {
-							switch m.Role {
-							case "user":
-								userBubble(c, m.Text)
-							case "step":
-								stepCard(c, m.Step)
-							default:
-								markdown.Markdown(c, m.Text, markdown.MarkdownProps{Variant: markdown.Chat})
-							}
-						}
-						if feedback && !streaming {
-							ui.Row(c).Gap(6).Children(func() {
-								action.Button(c, "这里不对", action.ButtonProps{Size: theme.Small}).OnClick(func() {
-									go app.sendPlay("这里不对")
-								})
-							})
-						}
-						if playErr != "" {
-							errorAlert(c, playErr)
-						}
-					})
-				})
-			})
-		}
-		if blocked {
-			return
-		}
-		if text := chatComposer(c, inputGen, &draft, composerProps{
-			Placeholder: "以使用者的身份说一句话…", Busy: streaming, BusyText: "Agent 正在按方案跑工具…",
-		}); text != "" {
-			draft = ""
-			app.mu.Lock()
-			app.playInputGen++
-			app.mu.Unlock()
-			go app.sendPlay(text)
-		}
-		writeBack(&app.playDraft, draftBefore, draft)
-	})
-}
-
 // userBubble 用户说的话：靠右的圆角气泡。
 func userBubble(c *ui.Context, text string) {
 	tk := theme.TokensOf(c)
@@ -519,139 +173,39 @@ func userBubble(c *ui.Context, text string) {
 	})
 }
 
-// stepCard 一次模拟动作：动作名 + 输入/结果。
+// stepCard 一次模拟动作，和网页版的三种卡片一致：调用工具、要先问人、按规则拦下。
 func stepCard(c *ui.Context, step map[string]string) {
 	tk := theme.TokensOf(c)
-	ui.Column(c).Padding(12, 14).Gap(6).Radius(12).Border(1, tk.BorderSecondary).Children(func() {
+	switch step["kind"] {
+	case "ask_owner":
+		who := step["who"]
+		if who == "" {
+			who = "人"
+		}
+		ui.Row(c).Padding(10, 14).Gap(8).Radius(12).Background(tk.WarningBg).AlignItems(ui.Start).Children(func() {
+			ui.Icon(c, lucide.Hand()).Width(14).Height(14).TextColor(tk.WarningText)
+			ui.Text(c, "要先问"+who+"："+step["action"]).FontSize(13).TextColor(tk.WarningText).Grow(1).Basis(0).MinWidth(0)
+		})
+		return
+	case "blocked":
+		ui.Row(c).Padding(10, 14).Gap(8).Radius(12).Background(tk.ErrorBg).AlignItems(ui.Start).Children(func() {
+			ui.Icon(c, lucide.Ban()).Width(14).Height(14).TextColor(tk.ErrorText)
+			ui.Text(c, "按规则拦下："+step["rule"]).FontSize(13).TextColor(tk.ErrorText).Grow(1).Basis(0).MinWidth(0)
+		})
+		return
+	}
+	ui.Column(c).Padding(10, 14).Gap(4).Radius(12).Border(1, tk.BorderSecondary).Children(func() {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, lucide.Wrench()).Width(14).Height(14).TextColor(tk.TextTertiary)
-			if step["tool"] != "" {
-				ui.Text(c, step["tool"]).FontSize(13).Bold()
-			}
-			if step["action"] != "" {
-				display.Tag(c, step["action"], display.TagProps{Size: theme.Small})
-			}
-			if step["who"] != "" {
-				ui.Text(c, "由 "+step["who"]+" 执行").FontSize(12).TextColor(tk.TextTertiary)
-			}
+			ui.Text(c, "模拟调用工具").FontSize(13).TextColor(tk.TextSecondary)
+			ui.Text(c, step["tool"]).Font("monospace").FontSize(13).FontWeight(600)
 		})
 		if step["input"] != "" {
 			ui.Text(c, "输入："+step["input"]).FontSize(13).TextColor(tk.TextSecondary)
 		}
 		if step["result"] != "" {
-			ui.Text(c, "结果："+step["result"]).FontSize(13).TextColor(tk.TextSecondary)
+			ui.Text(c, "结果（编的）："+step["result"]).FontSize(13).TextColor(tk.TextSecondary)
 		}
-	})
-}
-
-// auditsView 项目检查页：没检查过时是居中的引导；有结果后左列表 + 右报告。
-func auditsView(c *ui.Context) {
-	tk := theme.TokensOf(c)
-	app.mu.Lock()
-	audits := append([]AuditSummary(nil), app.audits...)
-	auditsErr := app.auditsErr
-	selected := app.auditSelected
-	detail := app.auditDetail
-	detailErr := app.auditDetailErr
-	job := app.auditJob
-	busy := app.auditBusy
-	status := app.auditStatus
-	app.mu.Unlock()
-	empty := len(audits) == 0 && auditsErr == ""
-
-	pickButton := func(size theme.Size) {
-		action.Button(c, "选文件夹检查", action.ButtonProps{Variant: action.Primary, Size: size}).
-			OnClick(func() { go app.pickAndAudit() })
-	}
-
-	pageShell(c, func() {
-		ui.Row(c).Grow(1).MinWidth(0).Children(func() { pageTitle(c, "项目检查", "看看已有的 AI 项目还差什么") })
-		if busy || status != "" {
-			ui.Text(c, status).FontSize(12).TextColor(tk.TextTertiary).MaxLines(1)
-		}
-		if selected != "" && detail != nil {
-			action.Button(c, "重新检查", action.ButtonProps{Size: theme.Small}).
-				OnClick(func() { go app.rerunAudit(selected) })
-		}
-		if !empty {
-			pickButton(theme.Small)
-		}
-	}, func() {
-		if empty {
-			centerEmpty(c, display.EmptyProps{Icon: lucide.FolderSearch(), Title: "检查一个已有的 AI 项目",
-				Description: "选一个项目文件夹，引擎会读一遍代码，列出缺失和薄弱的地方，再写出它本该有的 PRD。",
-				Action:      func() { pickButton(theme.Middle) }})
-			return
-		}
-		ui.Row(c).Grow(1).Basis(0).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-			// 左：检查结果列表，右侧一条细分隔线
-			ui.Column(c).Width(260).Shrink(0).Padding(12, 8).Gap(4).
-				BorderWidth(0, 1, 0, 0).BorderColor(tk.BorderSecondary).Children(func() {
-				if auditsErr != "" {
-					errorAlert(c, auditsErr)
-				}
-				items := make([]display.ListItem, 0, len(audits))
-				for _, a := range audits {
-					desc := a.Verdict
-					if !a.Finished {
-						desc = "检查中…"
-					}
-					if desc == "" {
-						desc = a.Root
-					}
-					items = append(items, display.ListItem{
-						Key: a.Slug, Label: a.Name, Description: desc, Icon: lucide.FolderSearch(),
-						Extra: fmt.Sprintf("%.0f%%", a.Completion*100),
-					})
-				}
-				clicked := display.List(c, display.ListProps{Items: items, Active: selected})
-				if clicked != "" {
-					go app.selectAudit(clicked)
-				}
-			})
-			// 右：报告
-			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
-				if selected == "" {
-					centerEmpty(c, display.EmptyProps{Icon: lucide.FileText(), Title: "选一个检查结果",
-						Description: "左边选一个项目，这里显示它的差距报告。"})
-					return
-				}
-				readingScroll(c, 16, func() {
-					if job != nil && job.Status != "" {
-						jobBlock(c, job)
-					}
-					if detailErr != "" {
-						errorAlert(c, detailErr)
-						return
-					}
-					if detail == nil {
-						mutedText(c, "读取中…")
-						return
-					}
-					ui.Row(c).Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
-						if detail.Verdict != "" {
-							display.Tag(c, detail.Verdict, display.TagProps{Color: display.TagInfo, Size: theme.Small})
-						}
-						display.Tag(c, fmt.Sprintf("缺失 %d", detail.Missing),
-							display.TagProps{Color: display.TagError, Size: theme.Small})
-						display.Tag(c, fmt.Sprintf("薄弱 %d", detail.Weak),
-							display.TagProps{Color: display.TagWarning, Size: theme.Small})
-						if detail.Finished {
-							ui.Text(c, fmt.Sprintf("读过 %d 个文件 · %d 次调用", detail.FilesSeen, detail.Calls)).
-								FontSize(12).TextColor(tk.TextTertiary)
-						}
-					})
-					if detail.Report != "" {
-						markdown.Markdown(c, detail.Report, markdown.MarkdownProps{})
-					}
-					if detail.SuggestedPRD != "" {
-						sectionCard(c, "本该有的 PRD", 0, func() {
-							markdown.Markdown(c, detail.SuggestedPRD, markdown.MarkdownProps{})
-						})
-					}
-				})
-			})
-		})
 	})
 }
 
@@ -680,14 +234,14 @@ func newProductView(c *ui.Context) {
 		if len(messages) == 0 && !streaming {
 			newProductWelcome(c, send)
 		} else {
-			ui.Scroll(c).Grow(1).Basis(0).Children(func() {
+			ui.Scroll(c).Grow(1).Basis(0).TrackScroll(followEnd("new-product")).Children(func() {
 				chatColumn(c, func() {
 					ui.Column(c).Grow(1).Basis(0).MaxWidth(chatWidth).Padding(24, 0).Gap(14).Children(func() {
 						for _, m := range messages {
 							if m.Role == "user" {
 								userBubble(c, m.Text)
 							} else {
-								markdown.Markdown(c, m.Text, markdown.MarkdownProps{Variant: markdown.Chat})
+								markdown.Markdown(c, breaks(m.Text), markdown.MarkdownProps{Variant: markdown.Chat})
 							}
 						}
 						if confirm != nil {

@@ -5,20 +5,21 @@ import (
 	"fmt"
 	"net/url"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
 
 // Product 是 GET /api/products 里一个产品的摘要（与 blueprint/web/views.py 的 product_summary 对齐）。
 type Product struct {
-	Slug            string  `json:"slug"`
-	Name            string  `json:"name"`
-	Version         int     `json:"version"`
-	HasPlan         bool    `json:"has_plan"`
-	Unknowns        int     `json:"unknowns"`
-	ReviewOK        bool    `json:"review_ok"`
-	PendingVersions []int   `json:"pending_versions"`
-	Updated         float64 `json:"updated"`
+	Slug            string   `json:"slug"`
+	Name            string   `json:"name"`
+	Version         int      `json:"version"`
+	HasPlan         bool     `json:"has_plan"`
+	Unknowns        int      `json:"unknowns"`
+	ReviewOK        bool     `json:"review_ok"`
+	PendingVersions []string `json:"pending_versions"` // 「V2」这样的版本号
+	Updated         float64  `json:"updated"`
 }
 
 // Page 是内容区的当前页面。
@@ -26,9 +27,9 @@ type Page int
 
 const (
 	PageProducts Page = iota
-	PageNew      // 对话式新建产品
-	PageSettings // 模型设置
-	PageAudits   // 外部项目检查
+	PageNew           // 对话式新建产品
+	PageSettings      // 模型设置
+	PageAudits        // 外部项目检查
 )
 
 // ChatMsg 是一条对话消息（与引擎 chat.parse_messages 的格式一致）。
@@ -53,6 +54,7 @@ type PlanQuestion struct {
 
 type PlanComponent struct {
 	ID       string `json:"id"`
+	Name     string `json:"name"`
 	Decision string `json:"decision"`
 	Reason   string `json:"reason"`
 	Domain   string `json:"domain"`
@@ -107,27 +109,70 @@ type PlanView struct {
 	ContextMemoryStrategy  string            `json:"context_memory_strategy"`
 	SecurityAndDegradation []string          `json:"security_and_degradation"`
 	Testing                []string          `json:"testing"`
-	Review                 map[string]any    `json:"review"`
+	Observability          PlanObservability `json:"observability"`
+	TechStack              string            `json:"tech_stack_and_deployment"`
+	Review                 *PlanReview       `json:"review"`
+	DesignAttempts         int               `json:"design_attempts"`
+	Budget                 Usage             `json:"budget"`
+}
+
+// PlanObservability 方案里的可观测性三项。
+type PlanObservability struct {
+	Logs       []string `json:"logs"`
+	Metrics    []string `json:"metrics"`
+	Trajectory string   `json:"trajectory"`
+}
+
+// PlanReview 独立审稿结果。
+type PlanReview struct {
+	OK      bool          `json:"ok"`
+	Score   *float64      `json:"score"`
+	Summary string        `json:"summary"`
+	Issues  []ReviewIssue `json:"issues"`
+}
+
+type ReviewIssue struct {
+	Section  string `json:"section"`
+	Problem  string `json:"problem"`
+	Severity string `json:"severity"`
+}
+
+// Usage 模型用量（usage.json 的一栏，或方案里的 budget）。
+type Usage struct {
+	Calls           int `json:"calls"`
+	InputTokens     int `json:"input_tokens"`
+	OutputTokens    int `json:"output_tokens"`
+	CacheReadTokens int `json:"cache_read_tokens"`
+}
+
+// ProductUsage 产品累计用量：推导 + 对话。
+type ProductUsage struct {
+	Total Usage `json:"total"`
+	Plan  Usage `json:"plan"`
+	Chat  Usage `json:"chat"`
 }
 
 // JobInfo 是引擎任务（与 jobs.py 的 to_dict 对齐）。
 type JobInfo struct {
-	ID        string   `json:"id"`
-	Kind      string   `json:"kind"`
-	Slug      string   `json:"slug"`
-	Status    string   `json:"status"` // running | done | failed
-	Logs      []string `json:"logs"`
-	LogCount  int      `json:"log_count"`
-	Error     string   `json:"error"`
-	Started   float64  `json:"started"`
-	Finished  float64  `json:"finished"`
+	ID       string         `json:"id"`
+	Kind     string         `json:"kind"`
+	Slug     string         `json:"slug"`
+	Status   string         `json:"status"` // running | done | failed
+	Logs     []string       `json:"logs"`
+	LogCount int            `json:"log_count"`
+	Error    string         `json:"error"`
+	Started  float64        `json:"started"`
+	Finished float64        `json:"finished"`
+	Result   map[string]any `json:"result"`
 }
 
 // PlayMsg 是试玩页的一行：用户话、Agent 回复或一个模拟动作步骤。
 type PlayMsg struct {
-	Role string            // user / assistant / step
-	Text string
-	Step map[string]string // step 行的动作卡字段
+	ID       int    // assistant 行的编号，「这里不对」的记录靠它对上号
+	Role     string // user / assistant / step
+	Text     string
+	Step     map[string]string // step 行的动作卡字段
+	Feedback bool              // 这条回复下面可以点「这里不对」
 }
 
 // AuditSummary 是一个检查结果（与 audits.py 的 audit_summary 对齐）。
@@ -148,13 +193,13 @@ type AuditSummary struct {
 // AuditDetail 是一个检查结果的完整内容（audit_detail）。
 type AuditDetail struct {
 	AuditSummary
-	Path        string `json:"path"`
-	Report      string `json:"report"`
+	Path         string `json:"path"`
+	Report       string `json:"report"`
 	SuggestedPRD string `json:"suggested_prd"`
-	ModeNote    string `json:"mode_note"`
+	ModeNote     string `json:"mode_note"`
 	FeaturesFrom string `json:"features_from"`
-	FilesSeen   int    `json:"files_seen"`
-	Calls       int    `json:"calls"`
+	FilesSeen    int    `json:"files_seen"`
+	Calls        int    `json:"calls"`
 }
 
 // AppState 是界面状态。写操作都在后台 goroutine（引擎连接、取数据、流式对话），
@@ -176,12 +221,46 @@ type AppState struct {
 	prdErr   string
 	loading  bool
 
-	// 产品详情页（方案）
-	plan       *PlanView
-	planErr    string
-	productTab int // 0=PRD 1=方案 2=试玩
-	job        *JobInfo
-	pollStop   chan struct{}
+	// 引擎的模型配置状态（左栏、各页的「先配置模型」提示用）
+	cfgLoaded     bool
+	cfgConfigured bool
+	cfgMock       bool
+	cfgModel      string
+
+	// 产品详情页
+	plan        *PlanView
+	planErr     string
+	productTab  string // overview answers play revise components architecture prompt review history
+	job         *JobInfo
+	pollStop    chan struct{}
+	usage       ProductUsage
+	answerIntro string
+	productPath string
+	planBusy    bool // 正在发「生成方案 / 继续推导」请求
+
+	// 回答问题、加新需求两段对话，按 key 存（见 chat.go）
+	chats map[string]*chatSession
+
+	// 试玩里记下的「这里不对」，按产品存；重新开始不清空
+	notes      map[string][]playNote
+	noteOpen   int // 正在写批注的回复编号，0 = 没有
+	noteDraft  string
+	noteGen    int
+	reviseSeed map[string]string // 带去加新需求的草稿，按产品存
+	playMsgSeq int
+	playChips  []string // 开场的几个场景，第一次回复前显示
+	playRole   string
+
+	// 版本历史
+	history    *History
+	historyErr string
+	historyFor string // 拉的是哪个产品、哪个版本，变了就重拉
+	prdDoc     *PrdDoc
+	prdDocErr  string
+	prdDocOpen bool
+
+	// 右下角的提示，下一帧由界面线程弹出
+	toasts []toastMsg
 
 	// 试玩页
 	playIntro     string
@@ -191,11 +270,11 @@ type AppState struct {
 	playStreaming bool
 	playGen       int // 换产品或发新一句就 +1；旧的流式回复对不上号就丢掉，免得串到别的产品
 	playDraft     string
-	playInputGen  int // 试玩输入框已发送的次数，输入框按它重建以清空（见 chatComposer）
+	playInputGen  int  // 试玩输入框已发送的次数，输入框按它重建以清空（见 chatComposer）
 	playFeedback  bool // 是否收到过「这里不对」的反馈卡
 
 	// 交接包
-	handoffBusy  bool
+	handoffBusy   bool
 	handoffStatus string
 
 	// 项目检查页
@@ -208,6 +287,10 @@ type AppState struct {
 	auditPollStop  chan struct{}
 	auditBusy      bool
 	auditStatus    string
+	auditTab       int  // 0=差距报告 1=本该有的需求文档
+	rejudgeOpen    bool // 「重新判断」确认框
+	newAuditOpen   bool // 「检查一个项目」对话框
+	newAuditPath   string
 
 	// 新建产品对话页
 	chatMessages  []ChatMsg
@@ -228,7 +311,44 @@ type AppState struct {
 	setStatus   string
 }
 
-func newState() *AppState { return &AppState{} }
+func newState() *AppState {
+	return &AppState{
+		productTab: "overview",
+		chats:      map[string]*chatSession{},
+		notes:      map[string][]playNote{},
+		reviseSeed: map[string]string{},
+	}
+}
+
+// toastMsg 一条右下角提示。后台 goroutine 放进队列，界面线程下一帧弹出（见 drainToasts）。
+type toastMsg struct {
+	text string
+	ok   bool
+}
+
+// toast 排一条提示。调用方必须已持有 s.mu。
+func (s *AppState) toast(text string, ok bool) {
+	s.toasts = append(s.toasts, toastMsg{text: text, ok: ok})
+}
+
+// loadConfig 读模型是否配好、是不是离线演示：左栏和各页的「先配置模型」提示用。
+func (s *AppState) loadConfig() {
+	base := s.baseURL()
+	if base == "" {
+		return
+	}
+	data, err := getSettings(base)
+	if err != nil {
+		return
+	}
+	s.mu.Lock()
+	s.cfgLoaded = true
+	s.cfgConfigured, _ = data["configured"].(bool)
+	s.cfgMock, _ = data["mock"].(bool)
+	s.cfgModel, _ = data["model"].(string)
+	s.mu.Unlock()
+	s.invalidate()
+}
 
 func (s *AppState) invalidate() {
 	if fn := invalidate.Load(); fn != nil {
@@ -249,11 +369,15 @@ func (s *AppState) selectProduct(slug string) {
 	s.page = PageProducts
 	s.prdText, s.prdVer, s.prdErr = "", 0, ""
 	s.plan, s.job, s.planErr = nil, nil, ""
-	s.productTab = 0
+	s.usage, s.answerIntro, s.productPath, s.planBusy = ProductUsage{}, "", "", false
+	s.productTab = "overview"
 	s.loading = true
 	s.playStarted, s.playIntro, s.playMessages, s.playErr, s.playDraft = false, "", nil, "", ""
 	s.playStreaming = false
+	s.playChips, s.playRole, s.noteOpen = nil, "", 0
 	s.playGen++
+	s.history, s.historyErr, s.historyFor = nil, "", ""
+	s.prdDoc, s.prdDocErr, s.prdDocOpen = nil, "", false
 	s.handoffBusy, s.handoffStatus = false, ""
 	s.mu.Unlock()
 	s.invalidate()
@@ -291,6 +415,7 @@ func (s *AppState) fetchDetail(slug string) {
 		s.invalidate()
 		return
 	}
+	s.plan = nil
 	if raw, ok := data["plan"]; ok && raw != nil {
 		if plan, perr := parsePlan(raw); perr == nil {
 			s.plan = plan
@@ -298,6 +423,16 @@ func (s *AppState) fetchDetail(slug string) {
 		} else {
 			s.planErr = perr.Error()
 		}
+	}
+	if raw, ok := data["usage"]; ok && raw != nil {
+		if b, berr := json.Marshal(raw); berr == nil {
+			_ = json.Unmarshal(b, &s.usage)
+		}
+	}
+	s.answerIntro, _ = data["answer_intro"].(string)
+	s.productPath, _ = data["path"].(string)
+	if v, ok := data["version"].(float64); ok {
+		s.prdVer = int(v)
 	}
 	if raw, ok := data["job"]; ok && raw != nil {
 		if job, jerr := parseJob(raw); jerr == nil {
@@ -357,6 +492,7 @@ func (s *AppState) startPoll(slug string, job *JobInfo) {
 			job = upd // 下一轮在累计后的日志上接，不然中间的增量会丢
 			s.job = upd
 			if upd.Status != "running" {
+				s.onPlanJobFinished(upd)
 				s.mu.Unlock()
 				s.refreshProducts() // 推导完成：产品摘要变了（待确认数、审稿状态）
 				s.fetchDetail(slug)
@@ -367,6 +503,58 @@ func (s *AppState) startPoll(slug string, job *JobInfo) {
 			s.invalidate()
 		}
 	}()
+}
+
+// onPlanJobFinished 推导 / 升版任务跑完：和网页版一样弹提示；加新需求成功就跳到版本历史。
+// 调用方必须已持有 s.mu。
+func (s *AppState) onPlanJobFinished(job *JobInfo) {
+	if job.Status != "done" {
+		return
+	}
+	s.historyFor = "" // 版本历史要重拉
+	if job.Kind == "revise" && job.Result != nil {
+		newVer := toInt(job.Result["new_version"])
+		diff, _ := job.Result["diff"].([]any)
+		msg := fmt.Sprintf("已升到 V%d，组件选型变了 %d 处", newVer, len(diff))
+		if len(diff) == 0 {
+			msg = fmt.Sprintf("已升到 V%d，组件选型没有变化", newVer)
+		}
+		s.toast(msg, true)
+		s.productTab = "history"
+		return
+	}
+	s.toast("方案已更新", true)
+}
+
+func toInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	}
+	return 0
+}
+
+// startPlan 「生成方案」「继续推导」：POST /plan，之后跟着任务进度走。
+func (s *AppState) startPlan(slug string) {
+	s.mu.Lock()
+	if s.planBusy {
+		s.mu.Unlock()
+		return
+	}
+	s.planBusy = true
+	base := s.engineURL
+	s.mu.Unlock()
+	s.invalidate()
+	_, err := postJSONData(base, "/api/products/"+url.PathEscape(slug)+"/plan", "{}")
+	s.mu.Lock()
+	s.planBusy = false
+	if err != nil {
+		s.toast(err.Error(), false)
+	}
+	s.mu.Unlock()
+	s.fetchDetail(slug)
 }
 
 func parsePlan(raw any) (*PlanView, error) {
@@ -398,7 +586,7 @@ func parseJob(raw any) (*JobInfo, error) {
 // startPlay 进入试玩：拉开场白（角色说明），没方案的报错。
 func (s *AppState) startPlay(slug string) {
 	s.mu.Lock()
-	s.productTab = 2
+	s.productTab = "play"
 	if s.playStarted {
 		s.mu.Unlock()
 		return
@@ -418,11 +606,22 @@ func (s *AppState) startPlay(slug string) {
 			s.playErr = err.Error()
 		} else {
 			text, _ := data["text"].(string)
+			role, _ := data["role"].(string)
+			if role == "" {
+				role = "这个产品的使用者"
+			}
 			if text == "" {
-				role, _ := data["role"].(string)
 				text = fmt.Sprintf("你现在扮演**%s**。发一句话试试，我会按方案里的设计回应。", role)
 			}
-			s.playIntro = text
+			s.playIntro, s.playRole = text, role
+			s.playChips = nil
+			if raw, ok := data["scenarios"].([]any); ok {
+				for _, r := range raw {
+					if sc, ok := r.(string); ok && sc != "" {
+						s.playChips = append(s.playChips, sc)
+					}
+				}
+			}
 		}
 		s.invalidate()
 	}()
@@ -440,6 +639,7 @@ func (s *AppState) sendPlay(text string) {
 	s.playErr = ""
 	s.playDraft = ""
 	s.playFeedback = false
+	s.playChips = nil // 开场的场景只在第一句之前给
 	slug := s.selected
 	s.playGen++
 	gen := s.playGen
@@ -457,7 +657,8 @@ func (s *AppState) sendPlay(text string) {
 			switch ev.Type {
 			case "text":
 				if n := len(s.playMessages); n == 0 || s.playMessages[n-1].Role != "assistant" {
-					s.playMessages = append(s.playMessages, PlayMsg{Role: "assistant"})
+					s.playMsgSeq++
+					s.playMessages = append(s.playMessages, PlayMsg{Role: "assistant", ID: s.playMsgSeq})
 				}
 				s.playMessages[len(s.playMessages)-1].Text += ev.Delta
 			case "data":
@@ -472,6 +673,9 @@ func (s *AppState) sendPlay(text string) {
 					s.playMessages = append(s.playMessages, PlayMsg{Role: "step", Step: step})
 				case "play_feedback":
 					s.playFeedback = true
+					if n := len(s.playMessages); n > 0 && s.playMessages[n-1].Role == "assistant" {
+						s.playMessages[n-1].Feedback = true
+					}
 				}
 			case "error":
 				s.playErr = ev.Message
@@ -586,6 +790,7 @@ func (s *AppState) selectAudit(slug string) {
 	}
 	s.auditSelected = slug
 	s.auditDetail, s.auditDetailErr, s.auditJob = nil, "", nil
+	s.auditTab = 0
 	s.mu.Unlock()
 	s.invalidate()
 	go s.fetchAudit(slug)
@@ -623,73 +828,77 @@ func (s *AppState) fetchAudit(slug string) {
 	s.invalidate()
 }
 
-// pickAndAudit 弹选文件夹 → 创建检查 → 选中它。调用方保证已持有 s.mu。
-func (s *AppState) pickAndAudit() {
+// pickAuditFolder 「选择文件夹…」：弹系统的选文件夹窗口，选中的路径填进对话框。
+func (s *AppState) pickAuditFolder() {
 	s.mu.Lock()
 	if s.auditBusy {
 		s.mu.Unlock()
 		return
 	}
-	s.auditBusy = true
-	s.auditStatus = "选择要检查的项目文件夹…"
+	s.auditBusy, s.auditStatus = true, "在弹出的窗口里选…"
 	s.mu.Unlock()
 	s.invalidate()
-	go func() {
-		folder, err := pickFolder(s.baseURL())
-		if err != nil || folder == "" {
-			s.mu.Lock()
-			s.auditBusy = false
-			s.auditStatus = "已取消"
-			if err != nil {
-				s.auditStatus = "选文件夹失败：" + err.Error()
-			}
-			s.mu.Unlock()
-			s.invalidate()
-			return
-		}
-		s.mu.Lock()
-		s.auditStatus = "开始检查：" + folder
-		s.mu.Unlock()
-		s.invalidate()
-		data, err := createAudit(s.baseURL(), folder)
-		s.mu.Lock()
-		s.auditBusy = false
-		if err != nil {
-			s.auditStatus = "创建检查失败：" + err.Error()
-			s.mu.Unlock()
-			s.invalidate()
-			return
-		}
-		slug, _ := data["slug"].(string)
-		s.auditStatus = ""
-		// loadAudits / selectAudit 自己会加锁，这里必须先放锁，否则整个界面死锁。
-		s.mu.Unlock()
-		s.loadAudits()
-		if slug != "" {
-			s.selectAudit(slug)
-		}
-	}()
+	folder, err := pickFolder(s.baseURL())
+	s.mu.Lock()
+	s.auditBusy, s.auditStatus = false, ""
+	if err != nil {
+		s.auditStatus = err.Error()
+	} else if folder != "" {
+		s.newAuditPath = folder
+	}
+	s.mu.Unlock()
+	s.invalidate()
 }
 
-// rerunAudit 重新检查（沿用上次的判断）。
-func (s *AppState) rerunAudit(slug string) {
+// startAudit 「开始检查」：对填好的路径创建检查，选中它。
+func (s *AppState) startAudit() {
+	s.mu.Lock()
+	path := strings.TrimSpace(s.newAuditPath)
+	if s.auditBusy || path == "" {
+		s.mu.Unlock()
+		return
+	}
+	s.auditBusy, s.auditStatus = true, "正在开始…"
+	s.mu.Unlock()
+	s.invalidate()
+	data, err := createAudit(s.baseURL(), path)
+	s.mu.Lock()
+	s.auditBusy, s.auditStatus = false, ""
+	if err != nil {
+		s.auditStatus = err.Error()
+		s.mu.Unlock()
+		s.invalidate()
+		return
+	}
+	slug, _ := data["slug"].(string)
+	s.newAuditOpen, s.newAuditPath = false, ""
+	// loadAudits / selectAudit 自己会加锁，这里必须先放锁，否则整个界面死锁。
+	s.mu.Unlock()
+	s.loadAudits()
+	if slug != "" {
+		s.selectAudit(slug)
+	}
+}
+
+// runAudit 再跑一次检查：recheck 沿用上次「该有什么」的判断，rejudge 从头再判断，resume 接着中断的地方跑。
+func (s *AppState) runAudit(slug, mode string) {
 	s.mu.Lock()
 	if s.auditBusy {
 		s.mu.Unlock()
 		return
 	}
 	s.auditBusy = true
-	s.auditStatus = "重新检查中…"
+	s.auditStatus = ""
 	s.mu.Unlock()
 	s.invalidate()
 	go func() {
-		body, _ := json.Marshal(map[string]string{"mode": "recheck"})
+		body, _ := json.Marshal(map[string]string{"mode": mode})
 		data, err := postJSONData(s.baseURL(), "/api/audits/"+url.PathEscape(slug)+"/run", string(body))
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		s.auditBusy = false
 		if err != nil {
-			s.auditStatus = "重新检查失败：" + err.Error()
+			s.toast(err.Error(), false)
 			s.invalidate()
 			return
 		}
@@ -752,6 +961,9 @@ func (s *AppState) startAuditPoll(slug string, job *JobInfo) {
 			job = upd // 下一轮在累计后的日志上接，不然中间的增量会丢
 			s.auditJob = upd
 			if upd.Status != "running" {
+				if upd.Status == "done" {
+					s.toast("检查完成，报告已更新", true)
+				}
 				s.mu.Unlock()
 				s.loadAudits()
 				s.fetchAudit(slug)
@@ -896,6 +1108,7 @@ func (s *AppState) saveSettings() {
 	if ok, _ := result["ok"].(bool); ok {
 		s.setStatus = "已保存：" + toString(result["message"])
 		s.setKey = ""
+		go s.loadConfig()
 	} else {
 		s.setStatus = toString(result["message"])
 	}
