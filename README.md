@@ -16,6 +16,7 @@
 [![Test](https://github.com/hubooooooo/agent-workshop/actions/workflows/test.yml/badge.svg)](https://github.com/hubooooooo/agent-workshop/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/downloads/)
+[![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/apps/agent-workshop)
 
 [版本与下载](#版本与下载) · [快速开始](#快速开始) · [先看效果](#先看效果) · [使用引导](使用引导.md) · [教程视频](https://www.bilibili.com/video/BV17RtD61ETm/)
 
