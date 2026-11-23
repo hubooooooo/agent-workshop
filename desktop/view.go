@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"net/url"
+	"os/exec"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/lobehub/lobe-mygo/pkg/action"
 	"github.com/lobehub/lobe-mygo/pkg/display"
+	"github.com/lobehub/lobe-mygo/pkg/feedback"
 	"github.com/lobehub/lobe-mygo/pkg/field"
 	"github.com/lobehub/lobe-mygo/pkg/lucide"
 	"github.com/lobehub/lobe-mygo/pkg/markdown"
@@ -235,6 +237,14 @@ func newProductView(c *ui.Context) {
 	pageShell(c, func() {
 		pageTitle(c, "新建产品", "一次问一个问题，问清楚后整理成需求草稿")
 	}, func() {
+		app.mu.Lock()
+		mock := app.cfgMock
+		app.mu.Unlock()
+		if mock { // 离线演示的提示，和网页版一样放在最上面
+			chatColumn(c, func() {
+				ui.Column(c).Grow(1).Basis(0).MaxWidth(chatWidth).Padding(16, 0, 0, 0).Children(func() { modeCallouts(c) })
+			})
+		}
 		if len(messages) == 0 && !streaming {
 			newProductWelcome(c, send)
 		} else {
@@ -312,22 +322,45 @@ func newProductWelcome(c *ui.Context, send func(string)) {
 }
 
 // confirmCard 引擎给出草稿后的确认卡片。
+// 产品名和需求都能改（和网页版的需求草稿卡片一样），确认后建产品并开始推导。
 func confirmCard(c *ui.Context, confirm *ConfirmCard) {
 	tk := theme.TokensOf(c)
-	ui.Column(c).Padding(16, 18).Gap(8).Radius(12).Border(1, tk.Border).Children(func() {
-		ui.Text(c, "草稿好了，确认要创建吗？").FontSize(14).Bold()
-		ui.Text(c, fmt.Sprintf("产品名：%s", confirm.Name)).FontSize(14)
-		ui.Text(c, confirm.Idea).FontSize(13).TextColor(tk.TextSecondary)
-		ui.Row(c).Gap(8).Padding(4, 0, 0, 0).Children(func() {
-			action.Button(c, "确认创建", action.ButtonProps{Variant: action.Primary}).OnClick(func() {
-				go app.confirmProduct()
-			})
-			action.Button(c, "再改改", action.ButtonProps{}).OnClick(func() {
-				app.mu.Lock()
-				app.chatConfirm = nil
-				app.mu.Unlock()
-				app.invalidate()
-			})
+	app.mu.Lock()
+	busy, cardErr := app.confirmBusy, app.confirmErr
+	app.mu.Unlock()
+	card(c, func() {
+		ui.Text(c, "需求草稿").FontSize(14).FontWeight(600)
+		name, idea := confirm.Name, confirm.Idea
+		formField(c, "产品名", "", func() {
+			field.Input(c, &name, field.InputProps{})
+		})
+		formField(c, "需求", "", func() {
+			field.TextArea(c, &idea, field.TextAreaProps{MinRows: 8, MaxRows: 16})
+		})
+		if name != confirm.Name || idea != confirm.Idea {
+			if r := []rune(name); len(r) > 40 {
+				name = string(r[:40])
+			}
+			app.mu.Lock()
+			if app.chatConfirm != nil {
+				app.chatConfirm.Name, app.chatConfirm.Idea = name, idea
+			}
+			app.mu.Unlock()
+		}
+		muted(c, "「还没想清楚」里的问题不用现在回答，方案生成后会列成待确认问题，到时候再一题一题过。", 12)
+		if cardErr != "" {
+			ui.Text(c, cardErr).FontSize(13).TextColor(tk.ErrorText)
+		}
+		ui.Row(c).Children(func() {
+			label := "开始推导方案"
+			if busy {
+				label = "正在创建…"
+			}
+			b := action.Button(c, label, action.ButtonProps{Variant: action.Primary})
+			b.Disabled(busy)
+			if !busy {
+				b.OnClick(func() { go app.confirmProduct() })
+			}
 		})
 	})
 }
@@ -342,9 +375,13 @@ func settingsView(c *ui.Context) {
 	model := app.setModel
 	key := app.setKey
 	baseURL := app.setBaseURL
-	status := app.setStatus
+	status, busy := app.setStatus, app.setBusy
+	mock := app.cfgMock
 	app.mu.Unlock()
 	providerBefore, modelBefore, keyBefore, baseURLBefore := provider, model, key, baseURL
+	if provider == "" {
+		provider = "deepseek"
+	}
 
 	providers := make([]field.SelectOption, 0, 8)
 	customBase := false
@@ -359,6 +396,22 @@ func settingsView(c *ui.Context) {
 			}
 		}
 	}
+	// 已保存的 Key 只在接口格式相同时沿用：换成另一种格式要重新粘贴（和网页版一样）
+	savedProvider := toString(settings["provider"])
+	masked, _ := settings["key_masked"].(string)
+	keyPlaceholder := "粘贴 API Key"
+	if masked != "" && savedProvider != "" && providerField(settings, savedProvider, "format") == providerField(settings, provider, "format") {
+		keyPlaceholder = "已保存（" + masked + "），不改就留空"
+	}
+	providerHelp := "选一个你有 API Key 的服务商。"
+	if provider == "openai" {
+		providerHelp = "OpenAI 官方接口在国内一般连不上；用中转的，选「OpenAI 格式的中转或其他服务」。"
+	}
+	keyPage := providerField(settings, provider, "key_page")
+	keyHelp := "已保存的 Key 不会显示出来，重新粘贴才会覆盖。Key 只保存在这台电脑的 .env 文件里。"
+	if keyPage == "" {
+		keyHelp += " Key 和接口地址向你用的中转服务商要。"
+	}
 
 	pageShell(c, func() {
 		pageTitle(c, "模型设置", "")
@@ -368,7 +421,8 @@ func settingsView(c *ui.Context) {
 				ui.Column(c).Grow(1).Basis(0).MinWidth(0).MaxWidth(560).Padding(28, 0, 40, 0).Gap(16).Children(func() {
 					ui.Column(c).Gap(6).Children(func() {
 						ui.Text(c, "选择模型").FontSize(22).Bold()
-						ui.Text(c, "新建产品时的追问、生成方案和试玩，都用这里配置的模型。").FontSize(14).TextColor(tk.TextSecondary)
+						ui.Text(c, "新建产品时的追问、生成方案和试玩，都用这里配置的模型。一份方案约 6–11 次调用、3–7 万 tokens；每次推导最多 40 次调用、150 万 tokens，超了会自动停下，不会无限扣费。").
+							FontSize(14).TextColor(tk.TextSecondary)
 					})
 					if settingsErr != "" {
 						errorAlert(c, settingsErr)
@@ -378,21 +432,37 @@ func settingsView(c *ui.Context) {
 						mutedText(c, "读取中…")
 						return
 					}
+					if mock {
+						callout(c, feedback.Warning, "离线演示模式", "当前不调用模型。这里保存的配置会写进本机 .env，下次正常启动时生效。", nil)
+					}
 					ui.Column(c).Padding(20).Gap(18).Radius(12).Border(1, tk.BorderSecondary).Children(func() {
-						formField(c, "模型服务商", "选一个你有 API Key 的服务商。", func() {
+						formField(c, "模型服务商", providerHelp, func() {
 							field.Select(c, &provider, field.SelectProps{Options: providers, Placeholder: "选择服务商", Size: theme.Middle})
+							if provider != providerBefore && providerBefore != "" {
+								model = "" // 换了服务商：模型名回到默认
+							}
 							writeBack(&app.setProvider, providerBefore, provider)
-						})
-						formField(c, "模型名", "不填就用服务商推荐的默认模型。", func() {
-							field.Input(c, &model, field.InputProps{Placeholder: "留空用默认模型", Size: theme.Middle})
 							writeBack(&app.setModel, modelBefore, model)
 						})
-						formField(c, "API Key", "已保存的 Key 不会显示出来，重新粘贴才会覆盖。", func() {
-							field.InputPassword(c, &key, field.InputProps{Placeholder: "粘贴 API Key", Size: theme.Middle})
+						formField(c, "模型名", "不填就用服务商推荐的默认模型。", func() {
+							before := model
+							field.Input(c, &model, field.InputProps{
+								Placeholder: "留空用默认模型（" + providerField(settings, provider, "model") + "）", Size: theme.Middle,
+							})
+							writeBack(&app.setModel, before, model)
+						})
+						formField(c, "API Key", keyHelp, func() {
+							field.InputPassword(c, &key, field.InputProps{Placeholder: keyPlaceholder, Size: theme.Middle})
 							writeBack(&app.setKey, keyBefore, key)
 						})
+						if keyPage != "" {
+							ui.Row(c).Margin(-12, 0, 0, 0).Children(func() {
+								action.Button(c, "去申请 Key →", action.ButtonProps{Variant: action.Link, Size: theme.Small}).
+									OnClick(func() { _ = exec.Command("open", keyPage).Start() })
+							})
+						}
 						if customBase {
-							formField(c, "接口地址", "这个服务商需要自己填接口地址，一般以 /v1 结尾。", func() {
+							formField(c, "接口地址", "填到 /v1 为止，引擎会自己接上 /chat/completions。DeepSeek、Kimi 的 OpenAI 格式地址也可以填在这里。", func() {
 								field.Input(c, &baseURL, field.InputProps{Placeholder: "https://…/v1", Size: theme.Middle})
 								writeBack(&app.setBaseURL, baseURLBefore, baseURL)
 							})
@@ -406,13 +476,21 @@ func settingsView(c *ui.Context) {
 						case strings.HasPrefix(status, "已保存"):
 							color = tk.SuccessText
 						}
-						ui.Text(c, status).FontSize(13).TextColor(color).Grow(1).Basis(0).MinWidth(0)
-						action.Button(c, "保存", action.ButtonProps{Variant: action.Primary}).OnClick(func() {
-							app.mu.Lock()
-							app.setProvider, app.setModel, app.setKey, app.setBaseURL = provider, model, key, baseURL
-							app.mu.Unlock()
-							go app.saveSettings()
-						})
+						shown := status
+						if busy {
+							shown = "正在测试连接…"
+						}
+						ui.Text(c, shown).FontSize(13).TextColor(color).Grow(1).Basis(0).MinWidth(0)
+						b := action.Button(c, "测试连接并保存", action.ButtonProps{Variant: action.Primary})
+						b.Disabled(busy)
+						if !busy {
+							b.OnClick(func() {
+								app.mu.Lock()
+								app.setProvider, app.setModel, app.setKey, app.setBaseURL = provider, model, key, baseURL
+								app.mu.Unlock()
+								go app.saveSettings()
+							})
+						}
 					})
 				})
 			})

@@ -1,4 +1,3 @@
-import { ArrowRightIcon, PlusIcon } from "lucide-react"
 
 import { Chip, ModeCallouts, Screen, ScrollBody, TopBar, timeAgo, useShell } from "@/components/common"
 import { Button } from "@/components/ui/button"
@@ -12,7 +11,7 @@ const STEPS = [
 
 const newButton = (
   <Button size="sm" nativeButton={false} render={<a href="#/new" />}>
-    <PlusIcon /> 新建产品
+    新建产品
   </Button>
 )
 
@@ -24,25 +23,27 @@ export function HomePage() {
     return (
       <Screen>
         <TopBar title="我的产品" />
-        <ScrollBody className="max-w-xl py-16">
+        <ScrollBody>
           <ModeCallouts />
-          <h1 className="text-xl font-semibold tracking-tight">把一个想法，推导成能做的 Agent 方案</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            不用懂技术，也不用会写需求文档。像聊天一样说清楚你想做什么，剩下的交给引擎。
-          </p>
-          <ol className="mt-6 divide-y rounded-lg border bg-card">
+          <div className="flex flex-col gap-2.5 pt-6">
+            <h1 className="text-[26px] font-semibold">把一个想法，推导成能做的 Agent 方案</h1>
+            <p className="text-[15px] text-text-secondary">
+              不用懂技术，也不用会写需求文档。像聊天一样说清楚你想做什么，剩下的交给引擎。
+            </p>
+          </div>
+          <ol className="mt-5 divide-y divide-border">
             {STEPS.map(([title, desc], i) => (
-              <li key={title} className="flex gap-3 px-4 py-3">
-                <span className="pt-0.5 font-mono text-xs text-muted-foreground">0{i + 1}</span>
-                <div>
-                  <div className="text-sm font-medium">{title}</div>
-                  <p className="mt-0.5 text-sm text-muted-foreground">{desc}</p>
+              <li key={title} className="flex gap-3.5 py-2.5">
+                <span className="pt-0.5 font-mono text-[13px] text-muted-foreground">0{i + 1}</span>
+                <div className="flex flex-col gap-0.5">
+                  <div className="text-[15px] font-semibold">{title}</div>
+                  <p className="text-[13px] text-muted-foreground">{desc}</p>
                 </div>
               </li>
             ))}
           </ol>
-          <Button className="mt-6" nativeButton={false} render={<a href="#/new" />}>
-            开始一个新产品 <ArrowRightIcon />
+          <Button className="mt-5" nativeButton={false} render={<a href="#/new" />}>
+            开始一个新产品 →
           </Button>
         </ScrollBody>
       </Screen>
@@ -57,18 +58,18 @@ export function HomePage() {
       />
       <ScrollBody>
         <ModeCallouts />
-        <div className="overflow-hidden rounded-lg border bg-card">
-          <div className="grid grid-cols-[1fr_auto] gap-4 border-b px-4 py-2 font-mono text-xs tracking-wide text-muted-foreground sm:grid-cols-[3rem_1fr_10rem_6rem]">
+        <div>
+          <div className="grid grid-cols-[1fr_auto] gap-3 border-b pb-1.5 text-xs text-muted-foreground sm:grid-cols-[48px_1fr_140px_88px]">
             <span className="hidden sm:block">版本</span>
             <span>产品</span>
             <span className="hidden sm:block">状态</span>
-            <span className="text-right">更新</span>
+            <span>更新</span>
           </div>
-          {products.map((p) => (
+          {[...products].sort((a, b) => b.updated - a.updated).map((p) => (
             <a
               key={p.slug}
               href={productHref(p.slug)}
-              className="grid grid-cols-[1fr_auto] items-center gap-4 border-b px-4 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-muted/50 sm:grid-cols-[3rem_1fr_10rem_6rem]"
+              className="grid grid-cols-[1fr_auto] items-center gap-3 border-b py-3 transition-colors hover:bg-black/[0.015] sm:grid-cols-[48px_1fr_140px_88px]"
             >
               <span className="hidden font-mono text-xs text-muted-foreground sm:block">V{p.version}</span>
               <span className="min-w-0 truncate font-medium">{p.name}</span>
@@ -81,11 +82,11 @@ export function HomePage() {
                   <Chip tone="ok">方案已生成</Chip>
                 )}
               </span>
-              <span className="text-right text-xs text-muted-foreground">{timeAgo(p.updated)}</span>
+              <span className="text-xs text-muted-foreground">{timeAgo(p.updated)}</span>
             </a>
           ))}
         </div>
-        <p className="mt-3 text-xs text-muted-foreground">每个产品一个文件夹，需求文档、方案、迭代记录都在引擎目录的 out/ 下。</p>
+        <p className="mt-5 text-xs text-muted-foreground">每个产品一个文件夹，需求文档、方案、迭代记录都在引擎目录的 out/ 下。</p>
       </ScrollBody>
     </Screen>
   )

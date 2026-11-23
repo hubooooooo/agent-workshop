@@ -1,7 +1,7 @@
 import type { Toolkit, ToolCallMessagePartProps } from "@assistant-ui/react"
-import { ArrowRightIcon } from "lucide-react"
 import { useState } from "react"
 
+import { useCardEdit } from "@/components/chat/chat-storage"
 import { JobProgress, useJob } from "@/components/job-progress"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,9 @@ import { api, type Job } from "@/lib/api"
 // 服务端（blueprint/chat.py）发来 tool 事件时，对话里弹出这些卡片。卡片是 human tool：
 // 用户在卡片上确认后调用 addResult，对话随之结束；之后卡片原地变成推导进度。
 
-const CARD = "my-3 rounded-lg border bg-card p-4"
+// 和桌面版的卡片一样：细边框、12 圆角，标题 14 加粗
+const CARD = "my-1 flex flex-col gap-2.5 rounded-xl border bg-card px-[18px] py-4"
+const CARD_TITLE = "text-sm font-semibold"
 
 type StartedResult = { slug: string; job: Job }
 
@@ -35,7 +37,10 @@ function ConfirmProductCard({ args, result, status, addResult }: ToolCallMessage
     setBusy(true)
     setError("")
     try {
-      addResult(await api.createProduct(name, idea))
+      const created = await api.createProduct(name, idea)
+      addResult(created)
+      // 和桌面版一样：建好就去产品页，推导进度在概览上看
+      location.hash = `#/p/${encodeURIComponent(created.slug)}`
     } catch (err) {
       setError((err as Error).message)
       setBusy(false)
@@ -44,10 +49,10 @@ function ConfirmProductCard({ args, result, status, addResult }: ToolCallMessage
 
   return (
     <div className={CARD}>
-      <div className="mb-3 font-mono text-xs tracking-wide text-muted-foreground uppercase">需求草稿</div>
-      <label className="mb-1 block text-sm font-medium" htmlFor="draft-name">产品名</label>
+      <div className={CARD_TITLE}>需求草稿</div>
+      <label className="text-[13px] font-medium" htmlFor="draft-name">产品名</label>
       <Input id="draft-name" value={name} onChange={(e) => setName(e.target.value)} disabled={!waiting || busy} maxLength={40} />
-      <label className="mt-3 mb-1 block text-sm font-medium" htmlFor="draft-idea">需求</label>
+      <label className="text-[13px] font-medium" htmlFor="draft-idea">需求</label>
       <Textarea
         id="draft-idea"
         value={idea}
@@ -55,12 +60,12 @@ function ConfirmProductCard({ args, result, status, addResult }: ToolCallMessage
         disabled={!waiting || busy}
         className="min-h-56 font-normal leading-relaxed"
       />
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="text-xs text-muted-foreground">
         「还没想清楚」里的问题不用现在回答，方案生成后会列成待确认问题，到时候再一题一题过。
       </p>
-      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+      {error && <p className="text-[13px] text-bad">{error}</p>}
       {waiting && (
-        <Button className="mt-3" size="lg" onClick={submit} disabled={busy}>
+        <Button className="self-start" onClick={submit} disabled={busy}>
           {busy ? "正在创建…" : "开始推导方案"}
         </Button>
       )}
@@ -76,7 +81,12 @@ type AnswersArgs = { answers: { question: string; answer: string }[] }
 
 function makeConfirmAnswersCard(slug: string, onStarted: () => void) {
   return function ConfirmAnswersCard({ args, result, status, addResult }: ToolCallMessagePartProps<AnswersArgs, StartedResult>) {
-    const [answers, setAnswers] = useState(args.answers ?? [])
+    const edit = useCardEdit()
+    const [answers, setAnswersState] = useState(edit.initial?.answers ?? args.answers ?? [])
+    const setAnswers = (next: typeof answers) => {
+      setAnswersState(next)
+      edit.set({ answers: next })
+    }
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState("")
 
@@ -98,28 +108,24 @@ function makeConfirmAnswersCard(slug: string, onStarted: () => void) {
 
     return (
       <div className={CARD}>
-        <div className="mb-3 font-mono text-xs tracking-wide text-muted-foreground uppercase">
-          回答汇总 · {answers.length} 条
-        </div>
-        <ol className="space-y-3">
-          {answers.map((a, i) => (
-            <li key={i}>
-              <div className="flex gap-2 text-sm">
-                <span className="font-mono text-xs leading-5 text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
-                <span className="text-muted-foreground">{a.question}</span>
-              </div>
-              <Textarea
-                value={a.answer}
-                disabled={!waiting || busy}
-                onChange={(e) => setAnswers(answers.map((x, j) => (j === i ? { ...x, answer: e.target.value } : x)))}
-                className="mt-1 min-h-10"
-              />
-            </li>
-          ))}
-        </ol>
-        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        <div className={CARD_TITLE}>回答汇总 · {answers.length} 条</div>
+        {answers.map((a, i) => (
+          <div key={i} className="flex flex-col gap-1.5">
+            <div className="flex gap-2">
+              <span className="font-mono text-xs leading-5 text-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
+              <span className="text-[13px] text-text-secondary">{a.question}</span>
+            </div>
+            <Textarea
+              value={a.answer}
+              disabled={!waiting || busy}
+              onChange={(e) => setAnswers(answers.map((x, j) => (j === i ? { ...x, answer: e.target.value } : x)))}
+              className="min-h-9"
+            />
+          </div>
+        ))}
+        {error && <p className="text-[13px] text-bad">{error}</p>}
         {waiting && (
-          <Button className="mt-4" size="lg" onClick={submit} disabled={busy}>
+          <Button className="self-start" onClick={submit} disabled={busy}>
             {busy ? "正在保存…" : "保存并重新推导方案"}
           </Button>
         )}
@@ -136,8 +142,17 @@ type RevisionArgs = { title: string; requirement: string }
 
 function makeConfirmRevisionCard(slug: string, nextVersion: number, onStarted: () => void) {
   return function ConfirmRevisionCard({ args, result, status, addResult }: ToolCallMessagePartProps<RevisionArgs, StartedResult>) {
-    const [title, setTitle] = useState(args.title ?? "")
-    const [requirement, setRequirement] = useState(args.requirement ?? "")
+    const edit = useCardEdit()
+    const [title, setTitleState] = useState(edit.initial?.title ?? args.title ?? "")
+    const [requirement, setRequirementState] = useState(edit.initial?.requirement ?? args.requirement ?? "")
+    const setTitle = (t: string) => {
+      setTitleState(t)
+      edit.set({ title: t, requirement })
+    }
+    const setRequirement = (r: string) => {
+      setRequirementState(r)
+      edit.set({ title, requirement: r })
+    }
     const [busy, setBusy] = useState(false)
     const [error, setError] = useState("")
 
@@ -160,10 +175,10 @@ function makeConfirmRevisionCard(slug: string, nextVersion: number, onStarted: (
 
     return (
       <div className={CARD}>
-        <div className="mb-3 font-mono text-xs tracking-wide text-muted-foreground uppercase">需求变更草稿 · V{nextVersion}</div>
-        <label className="mb-1 block text-sm font-medium" htmlFor="rev-title">一句话标题</label>
+        <div className={CARD_TITLE}>需求变更草稿 · V{nextVersion}</div>
+        <label className="text-[13px] font-medium" htmlFor="rev-title">一句话标题</label>
         <Input id="rev-title" value={title} onChange={(e) => setTitle(e.target.value)} disabled={!waiting || busy} maxLength={40} />
-        <label className="mt-3 mb-1 block text-sm font-medium" htmlFor="rev-body">新需求</label>
+        <label className="text-[13px] font-medium" htmlFor="rev-body">新需求</label>
         <Textarea
           id="rev-body"
           value={requirement}
@@ -171,12 +186,12 @@ function makeConfirmRevisionCard(slug: string, nextVersion: number, onStarted: (
           disabled={!waiting || busy}
           className="min-h-48 leading-relaxed"
         />
-        <p className="mt-2 text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           确认后，需求文档升到 V{nextVersion}（旧版本会留一份），方案按新需求重新推导；没变的部分沿用上次的结果，不重复花钱。
         </p>
-        {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        {error && <p className="text-[13px] text-bad">{error}</p>}
         {waiting && (
-          <Button className="mt-3" size="lg" onClick={submit} disabled={busy}>
+          <Button className="self-start" onClick={submit} disabled={busy}>
             {busy ? "正在升级…" : `升到 V${nextVersion} 并重新推导`}
           </Button>
         )}
@@ -192,18 +207,17 @@ function StartedCard({ result, title }: { result: StartedResult; title: string }
   if (!job) return null
   return (
     <div className={CARD}>
-      <div className="mb-1 text-sm font-medium">{title}</div>
+      <div className={CARD_TITLE}>{title}</div>
       <JobProgress job={job} compact />
-      {job.status === "failed" && (
-        <p className="mt-2 text-sm text-muted-foreground">到产品页点「继续推导」可以从断点接着跑。</p>
-      )}
+      {job.status === "failed" && <p className="text-xs text-muted-foreground">到概览里点「继续推导」可以从断点接着跑。</p>}
       <Button
-        className="mt-3"
-        variant={job.status === "done" ? "default" : "outline"}
+        className="self-start"
+        variant="outline"
+        size="sm"
         nativeButton={false}
         render={<a href={`#/p/${encodeURIComponent(result.slug)}`} />}
       >
-        {job.status === "done" ? "查看方案" : "打开产品页"} <ArrowRightIcon />
+        {job.status === "done" ? "查看方案" : "打开概览"}
       </Button>
     </div>
   )

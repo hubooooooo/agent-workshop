@@ -1,4 +1,4 @@
-import { PlusIcon, ScanSearchIcon, SettingsIcon, XIcon } from "lucide-react"
+import { BoxesIcon, RefreshCwIcon, ScanSearchIcon, SlidersHorizontalIcon, SparklesIcon, XIcon, type LucideIcon } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 
 import { SettingsContext, ShellContext } from "@/components/common"
@@ -6,139 +6,128 @@ import { Button } from "@/components/ui/button"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { api, type AuditSummary, type ProductSummary, type Settings } from "@/lib/api"
-import { auditHref, productHref, useRoute, type Route } from "@/lib/route"
+import { productHref, useRoute, type Route } from "@/lib/route"
 import { cn } from "@/lib/utils"
-import { AuditPage, AuditsPage, NewAuditPage } from "@/pages/audits"
+import { AuditsPage } from "@/pages/audits"
 import { HomePage } from "@/pages/home"
 import { NewProductPage } from "@/pages/new-product"
 import { ProductPage } from "@/pages/product"
 import { SettingsPage } from "@/pages/settings"
 
-function useSystemDarkMode() {
-  useEffect(() => {
-    const media = matchMedia("(prefers-color-scheme: dark)")
-    const apply = () => document.documentElement.classList.toggle("dark", media.matches)
-    apply()
-    media.addEventListener("change", apply)
-    return () => media.removeEventListener("change", apply)
-  }, [])
+type NavItem = { href: string; label: string; icon: LucideIcon; desc?: string; active: boolean; title?: string }
+
+/** 左栏的一项：和桌面版的列表项一样，图标 + 名字，可带一行灰色说明；选中时浅灰底。 */
+function NavLink({ item, onNavigate }: { item: NavItem; onNavigate: () => void }) {
+  const Icon = item.icon
+  return (
+    <a
+      href={item.href}
+      onClick={onNavigate}
+      title={item.title}
+      className={cn(
+        "flex items-center gap-2.5 rounded-lg px-3 text-sm transition-colors hover:bg-black/[0.04]",
+        item.desc ? "min-h-[46px] py-1.5" : "h-8",
+        item.active && "bg-secondary hover:bg-secondary",
+      )}
+    >
+      <Icon className="size-4 shrink-0 text-text-secondary" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{item.label}</span>
+        {item.desc && <span className="block truncate text-xs text-muted-foreground">{item.desc}</span>}
+      </span>
+    </a>
+  )
 }
 
-const itemClass = (active: boolean) =>
-  cn(
-    "flex h-8 items-center gap-2 rounded-md px-2 text-sm text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
-    active && "bg-sidebar-accent font-medium text-sidebar-foreground",
-  )
+function productDesc(p: ProductSummary) {
+  if (!p.has_plan) return `V${p.version} · 还没有方案`
+  if (!p.unknowns) return `V${p.version} · 方案已生成`
+  return `V${p.version} · 待确认 ${p.unknowns}`
+}
 
 function Sidebar({
   route,
   settings,
+  error,
   products,
-  audits,
+  onRefresh,
   onNavigate,
 }: {
   route: Route
   settings: Settings | null
+  error: string
   products: ProductSummary[] | null
-  audits: AuditSummary[] | null
+  onRefresh: () => void
   onNavigate: () => void
 }) {
+  const settingsDesc = !settings
+    ? undefined
+    : settings.mock
+      ? "离线演示"
+      : settings.configured
+        ? settings.model || "已配置模型"
+        : "未配置模型"
+  const nav: NavItem[] = [
+    { href: "#/", label: "产品", icon: BoxesIcon, active: route.page === "home" },
+    { href: "#/new", label: "新建产品", icon: SparklesIcon, active: route.page === "new" },
+    {
+      href: "#/audits",
+      label: "项目检查",
+      icon: ScanSearchIcon,
+      active: route.page === "audits" || route.page === "audit" || route.page === "audit-new",
+    },
+    { href: "#/settings", label: "模型设置", icon: SlidersHorizontalIcon, desc: settingsDesc, active: route.page === "settings" },
+  ]
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex h-12 shrink-0 items-center gap-2 px-4">
-        <a href="#/" onClick={onNavigate} className="flex items-center gap-2 text-sm font-semibold tracking-tight">
-          <span className="grid size-6 place-items-center rounded-md bg-foreground font-mono text-xs text-background">ab</span>
+    <div className="flex h-full flex-col gap-2 p-3">
+      <div className="flex h-8 shrink-0 items-center justify-between">
+        <a href="#/" onClick={onNavigate} className="text-[15px] font-semibold">
           Agent 工坊
         </a>
-        <Button variant="ghost" size="icon-sm" className="ms-auto md:hidden" onClick={onNavigate} aria-label="关闭菜单">
+        <Button variant="ghost" size="icon-sm" className="hidden md:inline-flex" onClick={onRefresh} aria-label="刷新产品列表" title="刷新产品列表">
+          <RefreshCwIcon />
+        </Button>
+        <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onNavigate} aria-label="关闭菜单">
           <XIcon />
         </Button>
       </div>
 
-      <div className="px-2 pt-1">
-        <a href="#/new" onClick={onNavigate} className={itemClass(route.page === "new")}>
-          <PlusIcon className="size-4" /> 新建产品
-        </a>
-        <a href="#/audits/new" onClick={onNavigate} className={itemClass(route.page === "audit-new")}>
-          <ScanSearchIcon className="size-4" /> 检查一个项目
-        </a>
-      </div>
-
-      <nav className="mt-4 min-h-0 flex-1 overflow-y-auto px-2 pb-2">
-        <a
-          href="#/"
-          onClick={onNavigate}
-          className={cn(
-            "mb-1 block px-2 font-mono text-xs tracking-wider text-muted-foreground hover:text-foreground",
-            route.page === "home" && "text-foreground",
-          )}
-        >
-          我的产品
-        </a>
-        {products?.length === 0 && <p className="px-2 py-1 text-xs text-muted-foreground">还没有产品</p>}
-        {products?.map((p) => (
-          <a
-            key={p.slug}
-            href={productHref(p.slug)}
-            onClick={onNavigate}
-            className={itemClass(route.page === "product" && route.slug === p.slug)}
-            title={p.name}
-          >
-            <span className="min-w-0 flex-1 truncate">{p.name}</span>
-            {p.has_plan && p.unknowns > 0 && (
-              <span className="font-mono text-xs font-normal text-ask" title={`${p.unknowns} 个待确认问题`}>{p.unknowns}</span>
-            )}
-          </a>
-        ))}
-
-        <a
-          href="#/audits"
-          onClick={onNavigate}
-          className={cn(
-            "mt-4 mb-1 block px-2 font-mono text-xs tracking-wider text-muted-foreground hover:text-foreground",
-            route.page === "audits" && "text-foreground",
-          )}
-        >
-          检查过的项目
-        </a>
-        {audits?.length === 0 && <p className="px-2 py-1 text-xs text-muted-foreground">还没有检查过</p>}
-        {audits?.map((a) => (
-          <a
-            key={a.slug}
-            href={auditHref(a.slug)}
-            onClick={onNavigate}
-            className={itemClass(route.page === "audit" && route.slug === a.slug)}
-            title={a.root}
-          >
-            <span className="min-w-0 flex-1 truncate">{a.name}</span>
-            {a.completion != null && (
-              <span className="font-mono text-xs font-normal text-muted-foreground" title="必选组件信号覆盖率">
-                {Math.round(a.completion * 100)}%
-              </span>
-            )}
-          </a>
+      <nav className="flex flex-col gap-0.5">
+        {nav.map((item) => (
+          <NavLink key={item.href} item={item} onNavigate={onNavigate} />
         ))}
       </nav>
 
-      <div className="border-t px-2 py-2">
-        <a href="#/settings" onClick={onNavigate} className={cn(itemClass(route.page === "settings"), "h-auto py-1.5")}>
-          <SettingsIcon className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1">
-            <span className="block">模型设置</span>
-            {settings && (
-              <span className="block truncate font-mono text-xs font-normal text-muted-foreground">
-                {settings.mock ? "离线演示" : settings.configured ? settings.model || "已配置模型" : "未配置模型"}
-              </span>
-            )}
-          </span>
-        </a>
+      <div className="px-2 pt-2.5 text-xs text-muted-foreground">我的产品</div>
+      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
+        {products?.length === 0 && <p className="px-2 py-1 text-xs text-muted-foreground">还没有产品，去「新建产品」聊一个出来。</p>}
+        {products?.map((p) => (
+          <NavLink
+            key={p.slug}
+            onNavigate={onNavigate}
+            item={{
+              href: productHref(p.slug),
+              label: p.name,
+              icon: BoxesIcon,
+              desc: productDesc(p),
+              title: p.name,
+              active: route.page === "product" && route.slug === p.slug,
+            }}
+          />
+        ))}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2 px-2 pt-1.5 pb-0.5 text-xs">
+        <span className={cn("size-[7px] shrink-0 rounded-full", error ? "bg-destructive" : settings ? "bg-ok" : "bg-[#feb400]")} />
+        <span className={cn("line-clamp-2", error ? "text-bad" : "text-muted-foreground")}>
+          {error ? "连不上引擎，确认启动界面的窗口还开着" : settings ? "引擎已连接" : "引擎启动中…"}
+        </span>
       </div>
     </div>
   )
 }
 
 export default function App() {
-  useSystemDarkMode()
   const route = useRoute()
   const [settings, setSettings] = useState<Settings | null>(null)
   const [products, setProducts] = useState<ProductSummary[] | null>(null)
@@ -187,28 +176,43 @@ export default function App() {
   return (
     <TooltipProvider>
       <ShellContext.Provider value={{ products, reloadProducts, audits, reloadAudits, openSidebar: () => setSidebarOpen(true) }}>
-        <div className="flex h-svh overflow-hidden">
+        <div className="flex h-svh overflow-hidden bg-layout">
           <aside
             className={cn(
-              "fixed inset-y-0 start-0 z-40 w-64 border-e bg-sidebar transition-transform md:static md:w-60 md:translate-x-0",
-              sidebarOpen ? "translate-x-0" : "-translate-x-full",
+              "fixed inset-y-0 start-0 z-40 w-[268px] bg-sidebar transition-transform md:static md:shrink-0 md:translate-x-0",
+              sidebarOpen ? "translate-x-0 shadow-lg" : "-translate-x-full",
             )}
           >
-            <Sidebar route={route} settings={settings} products={products} audits={audits} onNavigate={closeSidebar} />
+            <Sidebar
+              route={route}
+              settings={settings}
+              error={error}
+              products={products}
+              onRefresh={() => {
+                reloadProducts()
+                reloadAudits()
+              }}
+              onNavigate={closeSidebar}
+            />
           </aside>
           {sidebarOpen && <div className="fixed inset-0 z-30 bg-foreground/20 md:hidden" onClick={closeSidebar} />}
 
-          <main className="flex min-w-0 flex-1 flex-col">
-            {error && <div className="mx-auto mt-10 max-w-xl px-4 text-center text-sm text-destructive">{error}</div>}
+          {/* 右边是一张圆角白卡片，和桌面版的页面外壳一样 */}
+          <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-background md:my-2 md:me-2 md:rounded-xl md:border md:border-border-strong">
+            {error && <div className="mx-auto mt-10 max-w-xl px-4 text-center text-sm text-bad">{error}</div>}
             {settings && (
               <SettingsContext.Provider value={{ settings, reload }}>
                 {route.page === "home" && <HomePage />}
                 {route.page === "new" && <NewProductPage />}
                 {route.page === "settings" && <SettingsPage />}
                 {route.page === "product" && <ProductPage slug={route.slug} tab={route.tab} />}
-                {route.page === "audits" && <AuditsPage />}
-                {route.page === "audit-new" && <NewAuditPage />}
-                {route.page === "audit" && <AuditPage slug={route.slug} tab={route.tab} />}
+                {(route.page === "audits" || route.page === "audit-new" || route.page === "audit") && (
+                  <AuditsPage
+                    slug={route.page === "audit" ? route.slug : undefined}
+                    tab={route.page === "audit" ? route.tab : "report"}
+                    newOpen={route.page === "audit-new"}
+                  />
+                )}
               </SettingsContext.Provider>
             )}
           </main>

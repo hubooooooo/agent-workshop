@@ -1,10 +1,9 @@
 import { useAssistantDataUI, useAuiState, type DataMessagePartProps } from "@assistant-ui/react"
-import { ArrowRightIcon, CheckIcon, HandIcon, ShieldAlertIcon, WrenchIcon, XIcon } from "lucide-react"
+import { BanIcon, CheckIcon, HandIcon, MessagesSquareIcon, WrenchIcon, XIcon } from "lucide-react"
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
 import { ChatPane } from "@/components/chat/chat-pane"
 import { ChatProvider } from "@/components/chat/chat-runtime"
-import { clearChatsExcept } from "@/components/chat/chat-storage"
 import { Callout, ModeCallouts, ScrollBody, useSettings } from "@/components/common"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -27,24 +26,13 @@ function useNotes() {
   return ctx
 }
 
-const notesKey = (slug: string) => `ab:play-notes:${slug}`
 export const reviseSeedKey = (slug: string) => `ab:revise-seed:${slug}`
 
-function loadNotes(slug: string): Note[] {
-  try {
-    return JSON.parse(localStorage.getItem(notesKey(slug)) ?? "[]") as Note[]
-  } catch {
-    return []
-  }
-}
-
+// 「这里不对」存在引擎里，和桌面版共用（blueprint/web/conversations.py 的 notes）。
 function saveNotes(slug: string, notes: Note[]) {
-  try {
-    if (notes.length) localStorage.setItem(notesKey(slug), JSON.stringify(notes))
-    else localStorage.removeItem(notesKey(slug))
-  } catch {
-    /* 存不了就只在这次打开的页面里有效 */
-  }
+  api.saveNotes(slug, notes).catch(() => {
+    /* 存不上就只在这次打开的页面里有效 */
+  })
 }
 
 /** 记下的「这里不对」整理成一段新需求的开头，放进「加新需求」的输入框，用户再补充或直接发送。 */
@@ -57,41 +45,33 @@ function seedText(notes: Note[]) {
 // 数据卡片：模拟的动作、「这里不对」
 // ---------------------------------------------------------------------------
 
+/** 一次模拟动作，和桌面版一样三种卡片：调用工具、要先问人、按规则拦下。 */
 function StepCard({ data }: DataMessagePartProps<PlayStep>) {
-  const base = "my-2 flex gap-3 rounded-lg border px-3 py-2.5 text-sm"
   if (data.kind === "tool") {
     return (
-      <div className={base}>
-        <WrenchIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0 space-y-1">
-          <div>
-            <span className="text-muted-foreground">模拟调用工具 </span>
-            <span className="font-mono text-xs">{data.tool}</span>
-          </div>
-          {data.input && <div className="text-xs text-muted-foreground">输入：{data.input}</div>}
-          {data.result && <div className="text-xs text-muted-foreground">结果（编的）：{data.result}</div>}
+      <div className="my-2 flex flex-col gap-1 rounded-xl border px-3.5 py-2.5 text-[13px]">
+        <div className="flex items-center gap-2">
+          <WrenchIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="text-text-secondary">模拟调用工具</span>
+          <span className="font-mono font-semibold">{data.tool}</span>
         </div>
+        {data.input && <div className="text-text-secondary">输入：{data.input}</div>}
+        {data.result && <div className="text-text-secondary">结果（编的）：{data.result}</div>}
       </div>
     )
   }
   if (data.kind === "ask_owner") {
     return (
-      <div className={`${base} border-warn/30 bg-warn-soft`}>
-        <HandIcon className="mt-0.5 size-4 shrink-0 text-warn" />
-        <div>
-          <span className="font-medium">要先问{data.who || "人"}：</span>
-          {data.action}
-        </div>
+      <div className="my-2 flex items-start gap-2 rounded-xl bg-[#fff8f3] px-3.5 py-2.5 text-[13px] text-warn">
+        <HandIcon className="mt-0.5 size-3.5 shrink-0" />
+        <span>要先问{data.who || "人"}：{data.action}</span>
       </div>
     )
   }
   return (
-    <div className={`${base} border-destructive/30 bg-destructive/8`}>
-      <ShieldAlertIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <div>
-        <span className="font-medium">按规则拦下：</span>
-        {data.rule}
-      </div>
+    <div className="my-2 flex items-start gap-2 rounded-xl bg-[#fef8f7] px-3.5 py-2.5 text-[13px] text-bad">
+      <BanIcon className="mt-0.5 size-3.5 shrink-0" />
+      <span>按规则拦下：{data.rule}</span>
     </div>
   )
 }
@@ -114,24 +94,24 @@ function FeedbackButton() {
   if (running) return null
   if (saved) {
     return (
-      <div className="mt-2 flex items-start gap-2 text-xs text-muted-foreground">
-        <CheckIcon className="mt-0.5 size-3.5 shrink-0" />
+      <div className="mt-1 flex items-center gap-1.5 text-[13px] text-text-secondary">
+        <CheckIcon className="size-3.5 shrink-0 text-[#00864e]" />
         <span className="min-w-0 flex-1">已记下：{saved.comment}</span>
-        <button type="button" className="hover:text-foreground" onClick={() => remove(id)} aria-label="删掉这条">
-          <XIcon className="size-3.5" />
-        </button>
+        <Button variant="ghost" size="icon-sm" onClick={() => remove(id)} aria-label="删掉这条" title="删掉这条">
+          <XIcon />
+        </Button>
       </div>
     )
   }
   if (!open) {
     return (
-      <Button variant="ghost" size="sm" className="-ms-2 mt-1 text-muted-foreground" onClick={() => setOpen(true)}>
+      <Button variant="ghost" size="sm" className="mt-1" onClick={() => setOpen(true)}>
         这里不对
       </Button>
     )
   }
   return (
-    <div className="mt-2 space-y-2">
+    <div className="mt-2 flex flex-col gap-2">
       <Textarea
         autoFocus
         value={comment}
@@ -147,7 +127,7 @@ function FeedbackButton() {
         >
           记下
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+        <Button size="sm" variant="outline" onClick={() => setOpen(false)}>
           取消
         </Button>
       </div>
@@ -176,12 +156,10 @@ function NotesBar({ slug }: { slug: string }) {
     location.hash = productHref(slug, "revise")
   }
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-ask-soft/60 px-4 py-1.5 text-sm">
-      <span>
-        试玩中记下了 <span className="font-mono">{notes.length}</span> 处不对
-      </span>
-      <Button size="sm" onClick={carry}>
-        带去加新需求 <ArrowRightIcon />
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b bg-[#fff8f3] px-5 py-2 text-[13px] text-warn">
+      <span>试玩中记下了 {notes.length} 处不对</span>
+      <Button variant="outline" size="sm" onClick={carry}>
+        带去加新需求 →
       </Button>
     </div>
   )
@@ -194,7 +172,17 @@ export function PlayTab({ product }: { product: ProductDetail }) {
   const slug = product.slug
   const [intro, setIntro] = useState<PlayIntro | null>(null)
   const [error, setError] = useState("")
-  const [notes, setNotes] = useState<Note[]>(() => loadNotes(slug))
+  const [notes, setNotes] = useState<Note[]>([])
+  useEffect(() => {
+    let live = true
+    api.conversations(slug).then(
+      (c) => live && setNotes(c.notes),
+      () => {},
+    )
+    return () => {
+      live = false
+    }
+  }, [slug])
 
   const update = useCallback(
     (next: Note[]) => {
@@ -224,24 +212,38 @@ export function PlayTab({ product }: { product: ProductDetail }) {
 
   const initialMessages = useMemo(() => (intro ? [{ role: "assistant" as const, content: intro.text }] : []), [intro])
 
-  // 方案变了（提示词、工具、规则），旧的试玩对话就不作数了
-  const prefix = `play:${slug}:`
-  const storageKey = intro ? prefix + intro.fingerprint : ""
-  useEffect(() => {
-    if (storageKey) clearChatsExcept(prefix, storageKey)
-  }, [prefix, storageKey])
-
-  if (!settings.configured) return <ScrollBody className="max-w-3xl"><ModeCallouts /></ScrollBody>
-  if (error) return <ScrollBody className="max-w-3xl"><Callout tone="bad" title="试玩没能开始">{error}</Callout></ScrollBody>
-  if (!intro) return <p className="py-10 text-center text-sm text-muted-foreground">正在准备试玩…</p>
+  if (!settings.configured) return <ScrollBody><ModeCallouts /></ScrollBody>
+  if (error) {
+    return (
+      <ScrollBody>
+        <Callout
+          tone="bad"
+          title="试玩没能开始"
+          action={error.includes("模型设置") ? <Button size="sm" nativeButton={false} render={<a href="#/settings" />}>去模型设置</Button> : undefined}
+        >
+          {error}
+        </Callout>
+      </ScrollBody>
+    )
+  }
+  if (!intro) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center">
+        <MessagesSquareIcon className="mb-1.5 size-8 text-text-quaternary" />
+        <div className="text-[17px] font-semibold">正在准备试玩…</div>
+        <p className="max-w-[400px] text-muted-foreground">Agent 会先说明它扮演谁、能帮你做什么，然后你以使用者的身份跟它聊。</p>
+      </div>
+    )
+  }
 
   return (
     <NotesContext.Provider value={notesApi}>
       <ChatProvider
-        key={storageKey}
+        // 方案变了（提示词、工具、规则），开场白的指纹就变了，换一段新的；旧的引擎也不再返回
+        key={intro.fingerprint}
         endpoint={chatEndpoints.play(slug)}
         toolkit={NO_TOOLS}
-        storageKey={storageKey}
+        persist={{ slug, kind: "play" }}
         initialMessages={initialMessages}
         initialChips={intro.scenarios}
       >

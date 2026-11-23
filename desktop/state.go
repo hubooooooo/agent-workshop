@@ -316,7 +316,9 @@ type AppState struct {
 	chatSuggest   []string
 	chatDraft     string
 	chatCancel    func() // 正在回复：点「停止」时调
-	chatInputGen  int    // 新建产品输入框已发送的次数
+	confirmBusy   bool   // 需求草稿卡片：正在创建产品
+	confirmErr    string
+	chatInputGen  int // 新建产品输入框已发送的次数
 
 	// 设置页
 	settings    map[string]any
@@ -326,6 +328,7 @@ type AppState struct {
 	setKey      string
 	setBaseURL  string
 	setStatus   string
+	setBusy     bool // 正在测试连接
 }
 
 func newState() *AppState {
@@ -1050,7 +1053,7 @@ func (s *AppState) streamIntake() {
 				raw, _ := json.Marshal(ev.Args)
 				var card ConfirmCard
 				_ = json.Unmarshal(raw, &card)
-				s.chatConfirm = &card
+				s.chatConfirm, s.confirmErr = &card, ""
 			}
 		case "suggestions":
 			s.chatSuggest = ev.Items
@@ -1092,29 +1095,34 @@ func (s *AppState) stopIntake() {
 // confirmProduct 用户点了确认卡片：真正创建产品并跳到产品页。
 func (s *AppState) confirmProduct() {
 	s.mu.Lock()
-	card := s.chatConfirm
-	if card == nil {
+	if s.chatConfirm == nil || s.confirmBusy {
 		s.mu.Unlock()
 		return
 	}
-	s.chatConfirm = nil
-	s.chatSuggest = nil
-	s.mu.Unlock()
-	go func() {
-		slug, err := createProduct(s.baseURL(), card.Name, card.Idea)
-		s.mu.Lock()
-		if err != nil {
-			s.chatError = fmt.Sprintf("创建产品失败：%v", err)
-			s.mu.Unlock()
-			s.invalidate()
-			return
-		}
-		// 成功后回到产品页：推导任务在引擎后台跑，先刷新列表再选中新产品。
-		s.chatMessages = nil
+	card := *s.chatConfirm
+	if strings.TrimSpace(card.Name) == "" || strings.TrimSpace(card.Idea) == "" {
+		s.confirmErr = "产品名和需求都要有内容。"
 		s.mu.Unlock()
-		s.refreshProducts()
-		s.selectProduct(slug)
-	}()
+		s.invalidate()
+		return
+	}
+	s.confirmBusy, s.confirmErr = true, ""
+	s.mu.Unlock()
+	s.invalidate()
+	slug, err := createProduct(s.baseURL(), card.Name, card.Idea)
+	s.mu.Lock()
+	s.confirmBusy = false
+	if err != nil {
+		s.confirmErr = err.Error() // 卡片留着，改一改再试
+		s.mu.Unlock()
+		s.invalidate()
+		return
+	}
+	// 成功后去产品页（网页版也一样）：推导任务在引擎后台跑，概览上看进度。
+	s.chatMessages, s.chatConfirm, s.chatSuggest = nil, nil, nil
+	s.mu.Unlock()
+	s.refreshProducts()
+	s.selectProduct(slug)
 }
 
 // -- 设置页 ------------------------------------------------------------------
@@ -1137,6 +1145,9 @@ func (s *AppState) loadSettings() {
 		s.settingsErr = ""
 		s.setProvider, _ = data["provider"].(string)
 		s.setModel, _ = data["model"].(string)
+		if s.setModel == providerField(data, s.setProvider, "model") {
+			s.setModel = "" // 用的就是默认模型：输入框留空（和网页版一样）
+		}
 		s.setBaseURL, _ = data["base_url"].(string)
 		s.setKey = "" // Key 不回显，重新粘贴才覆盖
 	}
@@ -1152,11 +1163,14 @@ func (s *AppState) saveSettings() {
 		"base_url": s.setBaseURL,
 	}
 	base := s.engineURL
+	s.setBusy, s.setStatus = true, ""
 	s.mu.Unlock()
+	s.invalidate()
 	raw, _ := json.Marshal(body)
 	result, err := saveSettingsJSON(base, string(raw))
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.setBusy = false
 	if err != nil {
 		s.setStatus = "保存失败：" + err.Error()
 		s.invalidate()
@@ -1170,6 +1184,19 @@ func (s *AppState) saveSettings() {
 		s.setStatus = toString(result["message"])
 	}
 	s.invalidate()
+}
+
+// providerField 设置里某个服务商的一项（model、format、key_page……），找不到就是空串。
+func providerField(settings map[string]any, provider, name string) string {
+	raw, _ := settings["providers"].([]any)
+	for _, r := range raw {
+		if m, ok := r.(map[string]any); ok && toString(m["key"]) == provider {
+			if v, ok := m[name].(string); ok {
+				return v
+			}
+		}
+	}
+	return ""
 }
 
 func toString(v any) string {

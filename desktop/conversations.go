@@ -178,7 +178,7 @@ func answersView(c *ui.Context, slug string, plan *PlanView, job *JobInfo) {
 		return
 	}
 	endpoint := "/api/products/" + url.PathEscape(slug) + "/chat"
-	sessionView(c, key, endpoint, "回答会自动保存在这台电脑上，切走再回来、关掉应用再打开，都可以接着答。", "输入你的回答…",
+	sessionView(c, key, endpoint, "回答会自动保存，切走再回来、换到网页版或桌面版打开，都可以接着答。", "输入你的回答…",
 		snap, nil, func() {
 			if snap.Finished {
 				startedCard(c, slug, snap)

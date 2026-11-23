@@ -46,6 +46,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  CornerDownLeftIcon,
   MicIcon,
   PencilIcon,
   PhoneIcon,
@@ -184,21 +185,16 @@ export const Thread: FC<ThreadProps> = ({
   autoFocus = true,
   placeholder = "输入你的回答…",
 }) => {
-  const isEmpty = useAuiState(isNewChatView);
-
   return (
     <ThreadComponentsContext.Provider value={components}>
       <PlaceholderContext.Provider value={placeholder}>
-        <ThreadRoot isEmpty={isEmpty} autoFocus={autoFocus} />
+        <ThreadRoot autoFocus={autoFocus} />
       </PlaceholderContext.Provider>
     </ThreadComponentsContext.Provider>
   );
 };
 
-const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
-  isEmpty,
-  autoFocus,
-}) => {
+const ThreadRoot: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
   const { Welcome = ThreadWelcome, Finished = ThreadFinished } =
     useContext(ThreadComponentsContext);
 
@@ -206,11 +202,11 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
     <ThreadPrimitive.Root
       className="aui-root aui-thread-root bg-background @container flex h-full flex-col"
       style={{
-        ["--thread-max-width" as string]: "44rem",
-        ["--composer-bg" as string]:
-          "color-mix(in oklab, var(--color-muted) 30%, transparent)",
-        ["--composer-radius" as string]: "1rem",
-        ["--composer-padding" as string]: "0.5rem",
+        // 和桌面版一样：对话区和输入框同宽 760，输入框是 18 圆角的白卡片
+        ["--thread-max-width" as string]: "760px",
+        ["--composer-bg" as string]: "var(--background)",
+        ["--composer-radius" as string]: "18px",
+        ["--composer-padding" as string]: "0",
       }}
     >
       <ThreadPrimitive.Viewport
@@ -219,13 +215,14 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
         className="relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth"
       >
         <div
-          className={cn(
-            "mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-4 pt-4",
-            isEmpty && "justify-center",
-          )}
+          className="mx-auto flex w-full max-w-[calc(var(--thread-max-width)+48px)] flex-1 flex-col px-6 pt-6"
         >
+          {/* 空对话：欢迎语和例子在中间，输入框照常在底部（和桌面版一样） */}
           <AuiIf condition={isNewChatView}>
-            <Welcome />
+            <div className="flex flex-1 flex-col justify-center gap-3.5 pb-6">
+              <Welcome />
+              <ThreadSuggestions />
+            </div>
           </AuiIf>
           <AuiIf condition={isHistoryLoadingView}>
             <ThreadHistorySkeleton />
@@ -235,18 +232,21 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
 
           <div
             data-slot="aui_message-group"
-            className="mb-14 flex flex-col gap-y-6 empty:hidden"
+            className="mb-6 flex flex-col gap-y-3.5 empty:hidden"
           >
             <ThreadPrimitive.Messages>
               {() => <ThreadMessage />}
             </ThreadPrimitive.Messages>
+            {/* 快捷回复跟在最后一条回复下面（和桌面版一样），不放在输入框上方 */}
+            <AuiIf condition={(s) => !isFinished(s)}>
+              <ThreadFollowupSuggestions />
+            </AuiIf>
           </div>
 
           <ThreadPrimitive.ViewportFooter
             className={cn(
-              "aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4 md:pb-6",
-              !isEmpty &&
-                "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
+              "aui-thread-viewport-footer bg-background flex flex-col gap-4 overflow-visible pb-4",
+              "sticky bottom-0 mt-auto rounded-t-(--composer-radius)",
             )}
           >
             <ThreadScrollToBottom />
@@ -254,11 +254,7 @@ const ThreadRoot: FC<{ isEmpty: boolean; autoFocus: boolean }> = ({
               <Finished />
             </AuiIf>
             <AuiIf condition={(s) => !isFinished(s)}>
-              <ThreadFollowupSuggestions />
               <Composer autoFocus={autoFocus} />
-            </AuiIf>
-            <AuiIf condition={(s) => isNewChatView(s) && s.composer.isEmpty}>
-              <ThreadSuggestions />
             </AuiIf>
           </ThreadPrimitive.ViewportFooter>
         </div>
@@ -459,8 +455,7 @@ const ThreadWelcome: FC = () => {
 
 const ThreadSuggestions: FC = () => {
   return (
-    <div className="aui-thread-welcome-suggestions flex w-full flex-col">
-      <div className="text-muted-foreground px-2 pb-1 font-mono text-xs tracking-wider">试试这些例子</div>
+    <div className="aui-thread-welcome-suggestions flex w-full flex-col gap-2">
       <ThreadPrimitive.Suggestions>
         {() => <ThreadSuggestionItem />}
       </ThreadPrimitive.Suggestions>
@@ -470,14 +465,12 @@ const ThreadSuggestions: FC = () => {
 
 const ThreadSuggestionItem: FC = () => {
   return (
-    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200">
-      <SuggestionPrimitive.Trigger send render={<button type="button" className="aui-thread-welcome-suggestion group hover:bg-foreground/[0.03] focus-visible:ring-ring/50 flex w-full items-baseline gap-2.5 rounded-md px-2 py-2 text-start text-sm transition-colors outline-none focus-visible:ring-1 motion-reduce:transition-none" />}><span
+    <div className="aui-thread-welcome-suggestion-display">
+      <SuggestionPrimitive.Trigger send render={<button type="button" className="aui-thread-welcome-suggestion group hover:bg-black/[0.015] focus-visible:ring-ring/50 flex w-full items-center gap-2 rounded-xl border px-3.5 py-2.5 text-start transition-colors outline-none focus-visible:ring-1 motion-reduce:transition-none" />}><CornerDownLeftIcon
                       aria-hidden
-                      className="text-muted-foreground/60 group-hover:text-foreground font-mono text-xs transition-colors motion-reduce:transition-none"
-                    >
-                      {">"}
-                    </span><span className="min-w-0 flex-1 truncate">
-                      <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 text-foreground" />{" "}
+                      className="text-muted-foreground size-3.5 shrink-0"
+                    /><span className="min-w-0 flex-1 truncate">
+                      <SuggestionPrimitive.Title className="aui-thread-welcome-suggestion-text-1 text-text-secondary" />{" "}
                       <SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 text-muted-foreground empty:hidden" />
                     </span></SuggestionPrimitive.Trigger>
     </div>
@@ -488,9 +481,9 @@ const Composer: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
   const placeholder = useContext(PlaceholderContext);
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <div data-slot="aui_composer-shell" className="border-foreground/10 focus-within:border-foreground/25 flex w-full cursor-text flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) transition-[border-color]"><ComposerPrimitive.Input
+      <div data-slot="aui_composer-shell" className="border-border-strong focus-within:border-text-quaternary flex w-full cursor-text flex-col gap-1.5 rounded-(--composer-radius) border bg-(--composer-bg) px-4 pt-3.5 pb-2.5 shadow-[0_6px_16px_0_rgba(0,0,0,0.06),0_3px_6px_-4px_rgba(0,0,0,0.08)] transition-[border-color]"><ComposerPrimitive.Input
                       placeholder={placeholder}
-                      className="aui-composer-input caret-primary placeholder:text-muted-foreground/60 max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base leading-6 outline-none"
+                      className="aui-composer-input caret-primary placeholder:text-text-quaternary max-h-48 min-h-6 w-full resize-none bg-transparent text-[15px] leading-6 outline-none"
                       rows={1}
                       autoFocus={autoFocus}
                       enterKeyHint="send"
@@ -510,7 +503,12 @@ const ComposerAction: FC = () => {
 
   return (
     <div className="aui-composer-action-wrapper relative flex items-center justify-between">
-      <span className="text-muted-foreground/70 ps-2.5 text-xs">Enter 发送 · Shift+Enter 换行</span>
+      <AuiIf condition={(s) => !s.thread.isRunning}>
+        <span className="text-muted-foreground text-xs">Enter 发送</span>
+      </AuiIf>
+      <AuiIf condition={(s) => s.thread.isRunning}>
+        <span className="text-muted-foreground text-xs">正在回复…</span>
+      </AuiIf>
       <div className="flex items-center gap-1.5">
         <AuiIf
           condition={(s) =>
@@ -520,7 +518,7 @@ const ComposerAction: FC = () => {
             !shouldShowComposerResume(s)
           }
         >
-          <ComposerPrimitive.Send render={<TooltipIconButton tooltip="发送" side="bottom" type="button" variant="default" size="icon" className="aui-composer-send size-7 rounded-full" aria-label="发送" />}><ArrowUpIcon className="aui-composer-send-icon size-4" /></ComposerPrimitive.Send>
+          <ComposerPrimitive.Send render={<TooltipIconButton tooltip="发送" side="bottom" type="button" variant="default" size="icon" className="aui-composer-send size-8 rounded-full disabled:bg-secondary disabled:text-text-quaternary disabled:opacity-100" aria-label="发送" />}><ArrowUpIcon className="aui-composer-send-icon size-4" /></ComposerPrimitive.Send>
         </AuiIf>
         <AuiIf condition={shouldShowComposerResume}>
           <ComposerPrimitive.Resume render={<TooltipIconButton tooltip="继续生成" side="bottom" type="button" variant="default" size="icon" className="aui-composer-resume size-7 rounded-full" aria-label="继续生成" />}><PlayIcon className="aui-composer-resume-icon size-4" /></ComposerPrimitive.Resume>
@@ -532,7 +530,7 @@ const ComposerAction: FC = () => {
               s.composer.submission !== undefined)
           }
         >
-          <ComposerPrimitive.Cancel render={<Button type="button" variant="default" size="icon" className="aui-composer-cancel size-7 rounded-full" aria-label={isSending ? "取消发送" : "停止"} />}><SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" /></ComposerPrimitive.Cancel>
+          <ComposerPrimitive.Cancel render={<Button type="button" variant="default" size="icon" className="aui-composer-cancel size-8 rounded-full" aria-label={isSending ? "取消发送" : "停止"} title="停止" />}><SquareIcon className="aui-composer-cancel-icon size-3 fill-current" /></ComposerPrimitive.Cancel>
         </AuiIf>
       </div>
     </div>
@@ -570,7 +568,7 @@ const AssistantMessage: FC = () => {
     >
       <div
         data-slot="aui_assistant-message-content"
-        className="text-foreground px-2 leading-relaxed wrap-break-word"
+        className="text-foreground text-sm leading-[1.7] wrap-break-word"
       >
         <MessagePrimitive.GroupedParts groupBy={groupBy}>
           {({ part, children }) => {
@@ -653,10 +651,13 @@ const AssistantMessage: FC = () => {
 
       <div
         data-slot="aui_assistant-message-footer"
-        className={cn("ms-2 flex items-center", ACTION_BAR_HEIGHT)}
+        className={cn("flex items-center", ACTION_BAR_HEIGHT)}
       >
         <BranchPicker />
-        <AssistantActionBar />
+        {/* 开场白下面不放复制、重新生成（和桌面版一样） */}
+        <AuiIf condition={(s) => s.message.index > 0}>
+          <AssistantActionBar />
+        </AuiIf>
       </div>
     </MessagePrimitive.Root>
   );
@@ -710,11 +711,11 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
-      className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
+      className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
       data-role="user"
     >
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
-        <div className="aui-user-message-content peer bg-muted text-foreground rounded-(--composer-radius) px-4 py-2 wrap-break-word empty:hidden">
+        <div className="aui-user-message-content peer bg-secondary text-foreground max-w-[560px] rounded-2xl px-3.5 py-2.5 text-[15px] wrap-break-word whitespace-pre-wrap empty:hidden">
           <MessagePrimitive.Parts
             components={{ File: UserFilePart, Image: UserImagePart }}
           />
@@ -748,17 +749,17 @@ const EditComposer: FC = () => {
   return (
     <MessagePrimitive.Root
       data-slot="aui_edit-composer-wrapper"
-      className="flex flex-col px-2 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+      className="flex flex-col [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
     >
-      <ComposerPrimitive.Root className="aui-edit-composer-root border-foreground/10 focus-within:border-foreground/25 ms-auto flex w-full max-w-[85%] cursor-text flex-col rounded-(--composer-radius) border bg-(--composer-bg) transition-[border-color]">
+      <ComposerPrimitive.Root className="aui-edit-composer-root flex w-full flex-col gap-2">
         <ComposerPrimitive.Input
-          className="aui-edit-composer-input text-foreground min-h-14 w-full resize-none bg-transparent px-4 pt-3 pb-1 text-base outline-none"
+          className="aui-edit-composer-input border-input hover:border-text-quaternary focus:border-text-quaternary text-foreground min-h-9 w-full resize-none rounded-lg border bg-background px-3 py-1.5 text-sm outline-none"
           autoFocus
         />
-        <div className="aui-edit-composer-footer mx-2.5 mb-2.5 flex items-center gap-1.5 self-end">
-          <ComposerPrimitive.Cancel render={<Button variant="ghost" size="sm" className="h-8 px-3" />}>取消
+        <div className="aui-edit-composer-footer flex items-center gap-2 self-end">
+          <ComposerPrimitive.Cancel render={<Button variant="outline" size="sm" />}>取消
                               </ComposerPrimitive.Cancel>
-          <ComposerPrimitive.Send render={<Button size="sm" className="h-8 px-3" />}>重新发送
+          <ComposerPrimitive.Send render={<Button size="sm" />}>重新发送
                               </ComposerPrimitive.Send>
         </div>
       </ComposerPrimitive.Root>
