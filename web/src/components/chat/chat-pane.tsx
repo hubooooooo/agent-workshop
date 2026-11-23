@@ -7,8 +7,8 @@ import { RestartButton } from "@/components/chat/restart-button"
 export function ChatPane({ hint, top, placeholder }: { hint: ReactNode; top?: ReactNode; placeholder: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-10 shrink-0 items-center justify-between gap-3 border-b px-4 py-1.5 text-xs text-muted-foreground">
-        <span className="min-w-0">{hint}</span>
+      <div className="flex h-9 shrink-0 items-center justify-between gap-3 border-b px-5 text-xs text-muted-foreground">
+        <span className="min-w-0 truncate">{hint}</span>
         <RestartButton />
       </div>
       {top}

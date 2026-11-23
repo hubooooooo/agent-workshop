@@ -17,6 +17,13 @@ export default defineConfig({
     chunkSizeWarningLimit: 1600, // 本机加载，一个包够用，不拆分
   },
   server: {
-    proxy: { "/api": "http://127.0.0.1:8765" },
+    proxy: {
+      // 引擎只接受本机来源的 POST：开发时页面在 5173 端口，转发前去掉 Origin，Host 改成引擎自己的
+      "/api": {
+        target: "http://127.0.0.1:8765",
+        changeOrigin: true,
+        configure: (proxy) => proxy.on("proxyReq", (req) => req.removeHeader("origin")),
+      },
+    },
   },
 })

@@ -1,7 +1,10 @@
 import type { ExportedMessageRepository } from "@assistant-ui/react"
+
+import type { CardEdit } from "@/lib/api"
 import { createContext, useContext } from "react"
 
-// 对话存在浏览器本地：切换标签、刷新页面都能接着聊。卡片一确认（流程走完）就删掉，不留用完的对话。
+// 新建产品的对话存在浏览器本地（还没有产品可以存）；产品的三段对话存在引擎里，见 chat-runtime.tsx。
+// 卡片一确认（流程走完）就删掉，不留用完的对话。
 // localStorage 在隐私模式等情况下可能不可用，所有读写都包在 try 里，失败就当没存过。
 
 const PREFIX = "ab:chat:"
@@ -43,17 +46,6 @@ export function clearChat(key: string) {
   }
 }
 
-/** 同一前缀下除了 keep 以外的记录都删掉（方案换了，旧问题的对话就没用了）。 */
-export function clearChatsExcept(prefix: string, keep: string) {
-  try {
-    for (const k of Object.keys(localStorage)) {
-      if (k.startsWith(PREFIX + prefix) && k !== PREFIX + keep) localStorage.removeItem(k)
-    }
-  } catch {
-    /* 同上 */
-  }
-}
-
 /** 一组字符串的短指纹，用来区分「哪一版方案的问题」。 */
 export function fingerprint(items: readonly string[]) {
   let h = 5381
@@ -70,4 +62,11 @@ export function useChatControls() {
   const ctx = useContext(ChatControlsContext)
   if (!ctx) throw new Error("ChatControlsContext missing")
   return ctx
+}
+
+/** 卡片上改过、还没确认的内容：随对话一起存进引擎，换到桌面版打开也还在。 */
+export const CardEditContext = createContext<{ initial?: CardEdit; set: (edit: CardEdit) => void }>({ set: () => {} })
+
+export function useCardEdit() {
+  return useContext(CardEditContext)
 }

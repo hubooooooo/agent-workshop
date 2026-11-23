@@ -1,3 +1,5 @@
+import { SparklesIcon } from "lucide-react"
+
 import { Thread } from "@/components/assistant-ui/elements/thread.aui"
 import { ChatProvider } from "@/components/chat/chat-runtime"
 import { useChatControls } from "@/components/chat/chat-storage"
@@ -7,18 +9,20 @@ import { ModeCallouts, Screen, ScrollBody, TopBar, useSettings } from "@/compone
 import { Button } from "@/components/ui/button"
 import { chatEndpoints } from "@/lib/api"
 
+// 欢迎语和例子和桌面版一样（desktop/view.go 的 newProductWelcome）
 const STARTERS = [
-  "家长拍一张玩具合影，AI 生成可以亲子一起演的剧情脚本",
-  "每天早上整理我的邮箱，挑出要回复的，帮我起草回复",
-  "帮小店老板回答顾客在微信上问的常见问题",
+  "帮社区面包店回复顾客微信的 AI 客服，能查今天的面包、接预订",
+  "帮我妈记账的 AI，她发一句「买菜 35」就记下来，月底给她总结",
+  "每天早上自动整理我的工作邮件，挑出要回的并起草回复",
 ]
 
 function Welcome() {
   return (
-    <div className="mb-6 px-2">
-      <h1 className="text-2xl font-semibold tracking-tight">你想做一个什么样的 Agent？</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        一句话就行。我会问你几个问题：给谁用、怎么用、什么不能做，信息够了就整理成需求，交给引擎推导方案。说不清的地方直接说不知道。
+    <div className="flex flex-col items-center gap-2.5 text-center">
+      <SparklesIcon className="size-7 text-text-secondary" />
+      <h1 className="text-2xl font-semibold">说说你想做的 AI 产品</h1>
+      <p className="text-text-secondary">
+        我会一次问你一个问题，问清楚后整理成需求草稿给你确认。说不清的地方直接说「不知道」就行。
       </p>
     </div>
   )
@@ -28,7 +32,7 @@ function Welcome() {
 function Finished() {
   const { restart } = useChatControls()
   return (
-    <div className="flex flex-wrap items-center justify-center gap-3 py-2 text-sm text-muted-foreground">
+    <div className="flex flex-wrap items-center justify-center gap-3 pt-3.5 pb-2 text-[13px] text-muted-foreground">
       这个产品已经开始推导。
       <Button variant="outline" size="sm" onClick={restart}>
         再新建一个产品
@@ -43,7 +47,7 @@ export function NewProductPage() {
     return (
       <Screen>
         <TopBar title="新建产品" />
-        <ScrollBody className="max-w-2xl">
+        <ScrollBody>
           <ModeCallouts />
         </ScrollBody>
       </Screen>
@@ -52,14 +56,14 @@ export function NewProductPage() {
   return (
     <Screen>
       <ChatProvider endpoint={chatEndpoints.intake} toolkit={intakeToolkit} starters={STARTERS} storageKey="intake">
-        <TopBar title="新建产品" actions={<RestartButton label="重新开始" />} />
+        <TopBar title="新建产品" sub="一次问一个问题，问清楚后整理成需求草稿" actions={<RestartButton label="重新开始" />} />
         {settings.mock && (
-          <div className="mx-auto w-full max-w-[44rem] px-4 pt-4">
+          <div className="mx-auto w-full max-w-[808px] px-6 pt-4">
             <ModeCallouts />
           </div>
         )}
         <div className="min-h-0 flex-1">
-          <Thread components={{ Welcome, Finished }} placeholder="说说你的想法…" />
+          <Thread components={{ Welcome, Finished }} placeholder="描述你想做的 AI 产品，比如：帮社区面包店回复顾客微信的 AI 客服" />
         </div>
       </ChatProvider>
     </Screen>

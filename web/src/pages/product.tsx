@@ -1,13 +1,12 @@
 import { useAui } from "@assistant-ui/react"
-import { DownloadIcon, FolderOpenIcon } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
 import { ChatPane } from "@/components/chat/chat-pane"
 import { ChatProvider } from "@/components/chat/chat-runtime"
-import { clearChatsExcept, fingerprint } from "@/components/chat/chat-storage"
+import { fingerprint } from "@/components/chat/chat-storage"
 import { answersToolkit, reviseToolkit } from "@/components/chat/tool-cards"
-import { Callout, ModeCallouts, READING, Screen, ScrollBody, TopBar, useSettings, useShell } from "@/components/common"
+import { Callout, ModeCallouts, Screen, ScrollBody, TopBar, useSettings, useShell } from "@/components/common"
 import { JobProgress, useJob } from "@/components/job-progress"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -88,16 +87,16 @@ function ProductView({ product, tab, reload }: { product: ProductDetail; tab: st
       actions={
         <>
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => api.reveal(product.slug).catch((e: Error) => toast.error(e.message))}
             title={product.path}
           >
-            <FolderOpenIcon /> <span className="hidden sm:inline">打开文件夹</span>
+            打开文件夹
           </Button>
           {plan && (
             <Button size="sm" nativeButton={false} render={<a href={handoffUrl(product.slug)} download />}>
-              <DownloadIcon /> <span className="hidden sm:inline">导出交接包</span>
+              导出交接包
             </Button>
           )}
         </>
@@ -111,13 +110,13 @@ function ProductView({ product, tab, reload }: { product: ProductDetail; tab: st
     return (
       <Screen>
         {bar}
-        <ScrollBody className="max-w-3xl">
+        <ScrollBody>
           <ModeCallouts />
           {progress}
           {!job && (
             <Callout
               title="还没有方案"
-              action={<Button onClick={startPlan} disabled={!settings.configured}>生成方案</Button>}
+              action={<Button size="sm" onClick={startPlan} disabled={!settings.configured}>生成方案</Button>}
             >
               上次推导可能被中断了。重新推导时，已完成的阶段不会重复调用模型。
             </Callout>
@@ -177,11 +176,11 @@ function PlanTabs({
   else if (active === "revise") body = <RevisionTab product={product} reload={reload} running={running} />
   else {
     body = (
-      // 概览有右栏，用整个宽度；其余以文字为主，收到阅读宽度（一行四十多个字）
-      <ScrollBody className={active === "overview" ? undefined : READING}>
+      // 概览有右栏，宽一些（1040）；其余是居中的阅读列（760），和桌面版一样
+      <ScrollBody className={active === "overview" ? "max-w-[1096px]" : undefined}>
         <ModeCallouts />
         {progress && <div className="mb-6">{progress}</div>}
-        {running && <Callout title="下面还是上一版方案">新方案推导完成后会自动刷新。</Callout>}
+        {running && <Callout tone="info" title="下面还是上一版方案">新方案推导完成后会自动刷新。</Callout>}
         {active === "overview" && <OverviewTab plan={plan} slug={product.slug} onAnswer={() => go("answers")} onComponents={() => go("components")} />}
         {active === "components" && <ComponentsTab plan={plan} />}
         {active === "architecture" && <ArchitectureTab plan={plan} />}
@@ -201,18 +200,19 @@ function PlanTabs({
 
   return (
     <div className="flex min-h-0 flex-1">
-      <nav className="hidden w-44 shrink-0 flex-col border-e lg:flex">
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3">
+      {/* 左边一列分组导航，和桌面版一样 188 宽 */}
+      <nav className="hidden w-[188px] shrink-0 flex-col border-e px-2 py-3 lg:flex">
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
           {NAV.map((g, i) => (
-            <div key={i} className={cn(i > 0 && "mt-4")}>
-              {g.group && <div className="mb-1 px-2 font-mono text-xs tracking-wider text-muted-foreground">{g.group}</div>}
+            <div key={i} className="flex flex-col gap-0.5">
+              {g.group && <div className="px-2.5 pt-3 pb-1 text-xs text-muted-foreground">{g.group}</div>}
               {g.items.map(([key, label]) => (
                 <a
                   key={key}
                   href={productHref(product.slug, key)}
                   className={cn(
-                    "flex h-8 items-center rounded-md px-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-                    active === key && "bg-muted font-medium text-foreground",
+                    "flex h-8 items-center rounded-lg px-2.5 text-sm text-text-secondary transition-colors hover:bg-black/[0.015]",
+                    active === key && "bg-secondary font-semibold text-foreground hover:bg-secondary",
                   )}
                 >
                   {label}
@@ -222,7 +222,7 @@ function PlanTabs({
             </div>
           ))}
         </div>
-        <UsageFooter product={product} stacked className="border-t px-4 py-3" />
+        <UsageFooter product={product} stacked className="border-t px-2.5 pt-2.5 pb-1" />
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -239,7 +239,7 @@ function PlanTabs({
           </Tabs>
         </div>
         {running && CHAT_TABS.has(active) && (
-          <div className="shrink-0 border-b bg-muted/50 px-4 py-2 text-xs text-muted-foreground">
+          <div className="shrink-0 border-b px-5 py-2 text-xs text-muted-foreground">
             正在推导新方案，进度在
             <a href={productHref(product.slug)} className="mx-1 text-link hover:underline">概览</a>
             里看。
@@ -275,7 +275,7 @@ function UsageFooter({ product, stacked = false, className }: { product: Product
   ]
   return (
     <div
-      className={cn("text-xs leading-relaxed text-muted-foreground", className)}
+      className={cn("text-xs leading-[1.6] text-muted-foreground", className)}
       title={total.calls ? `其中对话 ${chat.calls} 次；新建产品时的三轮对话不计在内` : undefined}
     >
       {stacked ? parts.map((t) => <div key={t}>{t}</div>) : parts.join(" · ")}
@@ -285,7 +285,7 @@ function UsageFooter({ product, stacked = false, className }: { product: Product
 
 /** 不能对话时（没配模型、正在推导）占位的提示。 */
 function ChatBlocked({ children }: { children: ReactNode }) {
-  return <ScrollBody className="max-w-3xl">{children}</ScrollBody>
+  return <ScrollBody>{children}</ScrollBody>
 }
 
 function RevisionTab({ product, reload, running }: { product: ProductDetail; reload: () => Promise<void>; running: boolean }) {
@@ -303,13 +303,13 @@ function RevisionTab({ product, reload, running }: { product: ProductDetail; rel
   )
 
   if (!settings.configured) return <ChatBlocked><ModeCallouts /></ChatBlocked>
-  if (running) return <ChatBlocked><Callout title="正在推导">等这一轮推导完成，再加新需求。</Callout></ChatBlocked>
+  if (running) return <ChatBlocked><Callout tone="info" title="正在推导">等这一轮推导完成，再加新需求。</Callout></ChatBlocked>
   return (
     <ChatProvider
       key={`revise:${product.version}`}
       endpoint={chatEndpoints.revise(product.slug)}
       toolkit={toolkit}
-      storageKey={`revise:${product.slug}:v${product.version}`}
+      persist={{ slug: product.slug, kind: "revise" }}
       initialMessages={initialMessages}
     >
       <SeedComposer slug={product.slug} />
@@ -345,28 +345,26 @@ function AnswersTab({ product, reload, running }: { product: ProductDetail; relo
     () => [{ role: "assistant" as const, content: product.answer_intro }],
     [product.answer_intro],
   )
-  // 同一版问题共用一段对话；方案一变（问题变了）就换新的，旧的删掉
-  const prefix = `answers:${product.slug}:`
-  const storageKey = prefix + fingerprint(questions)
-  useEffect(() => clearChatsExcept(prefix, storageKey), [prefix, storageKey])
+  // 同一版问题共用一段对话；方案一变（问题变了），引擎就不再返回旧的，这里也换一个新的
+  const chatKey = `answers:${product.slug}:${fingerprint(questions)}`
 
   if (!questions.length) {
-    return <ChatBlocked><Callout title="没有待确认的问题">方案里的信息很完整，不需要再补充。</Callout></ChatBlocked>
+    return <ChatBlocked><Callout tone="ok" title="没有待确认的问题">方案里的信息很完整，不需要再补充。</Callout></ChatBlocked>
   }
   if (!settings.configured) return <ChatBlocked><ModeCallouts /></ChatBlocked>
   if (running) {
-    return <ChatBlocked><Callout title="正在按你的回答重新推导">推导完成后，这里会换成新方案里的问题。</Callout></ChatBlocked>
+    return <ChatBlocked><Callout tone="info" title="正在按你的回答重新推导">推导完成后，这里会换成新方案里的问题。</Callout></ChatBlocked>
   }
   return (
     <ChatProvider
-      key={storageKey}
+      key={chatKey}
       endpoint={chatEndpoints.answers(product.slug)}
       toolkit={toolkit}
-      storageKey={storageKey}
+      persist={{ slug: product.slug, kind: "answers" }}
       initialMessages={initialMessages}
       initialChips={OPENING_CHIPS}
     >
-      <ChatPane hint="回答会自动保存在这台电脑的浏览器里，切走再回来可以接着答。" placeholder="输入你的回答…" />
+      <ChatPane hint="回答会自动保存，切走再回来、换到网页版或桌面版打开，都可以接着答。" placeholder="输入你的回答…" />
     </ChatProvider>
   )
 }

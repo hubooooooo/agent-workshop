@@ -218,6 +218,36 @@ export const api = {
   createAudit: (path: string) => request<{ slug: string; job: Job }>("/api/audits", { path }),
   rerunAudit: (slug: string, mode: AuditMode) => request<{ job: Job }>(`/api/audits/${enc(slug)}/run`, { mode }),
   revealAudit: (slug: string) => request<{ ok: boolean }>(`/api/audits/${enc(slug)}/reveal`, {}),
+  conversations: (slug: string) => request<Conversations>(`/api/products/${enc(slug)}/conversations`),
+  saveConversation: (slug: string, kind: ConversationKind, session: WireSession | null) =>
+    request<{ ok: boolean }>(`/api/products/${enc(slug)}/conversations/${kind}`, { session }),
+  saveNotes: (slug: string, notes: WireNote[]) =>
+    request<{ ok: boolean }>(`/api/products/${enc(slug)}/conversations/notes`, { notes }),
+}
+
+// -- 存在引擎里的对话（blueprint/web/conversations.py），网页版和桌面版共用同一份 --------------------
+
+export type ConversationKind = "answers" | "revise" | "play"
+
+export type WirePart =
+  | { type: "text"; text: string }
+  | { type: "data"; name: string; data?: Record<string, unknown> }
+  | { type: "tool"; name: string; args?: Record<string, unknown>; result?: unknown }
+
+export type WireMessage = { id: string; role: "user" | "assistant"; parts: WirePart[] }
+
+/** 卡片上改过、还没确认的内容。 */
+export type CardEdit = { answers?: { question: string; answer: string }[]; title?: string; requirement?: string }
+
+export type WireSession = { messages: WireMessage[]; chips?: string[]; card?: CardEdit }
+
+export type WireNote = { id: string; said: string; reply: string; comment: string }
+
+export type Conversations = {
+  notes: WireNote[]
+  answers: WireSession | null
+  revise: WireSession | null
+  play: WireSession | null
 }
 
 export const handoffUrl = (slug: string) => `/api/products/${enc(slug)}/handoff`

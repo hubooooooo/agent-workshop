@@ -32,7 +32,7 @@
 <tr><td><b>教学版</b></td><td>没有网页界面：项目文件夹、Python 引擎和命令行。用 AI 编程工具打开文件夹，让它全局阅读项目，再按引导一步步带你做到骨架验收</td><td>课堂上跟着老师学，看清项目里有什么、每一步怎么跑起来</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/teaching">下载</a> · <a href="https://github.com/hubooooooo/agent-workshop/tree/v1-maint">浏览源码</a></td></tr>
 <tr><td><b>网页版</b>（本页）</td><td>在教学版的基础上加了本地网页界面：对话式新建产品、回答问题、试玩、导出交接包、检查外部项目。安装包里同时带着下面的桌面版</td><td>想直接用的普通用户：下载后双击启动，在网页上操作</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a></td></tr>
 <tr><td><b>AI 技能版</b></td><td>一个叫 agent-prd 的技能：装进你自己的 AI 工具，对话追问后写出 <code>PRD.md</code> 和 <code>方案.md</code>。不用下载项目、不用 Python、不用另配 API Key</td><td>已经在用 AI 工具的人，想最快拿到需求文档和技术方案</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/tag/agent-prd">下载</a> · <a href="plugins/agent-workshop/skills/agent-prd/README.md">各工具装法</a></td></tr>
-<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生应用，就在网页版的安装包里（<code>Agent 工坊.app</code>）：用同一个引擎，功能和网页版一致，界面固定浅色；Apple 芯片和 Intel 的 Mac 都能用</td><td>不想开浏览器、喜欢原生应用的人</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a>（和网页版同一个包）</td></tr>
+<tr><td><b>桌面版</b>（Mac，预览）</td><td>网页版界面的 macOS 原生应用，就在网页版的安装包里（<code>Agent 工坊.app</code>）：用同一个引擎，功能、界面和网页版一致，对话两边互通；Apple 芯片和 Intel 的 Mac 都能用</td><td>不想开浏览器、喜欢原生应用的人</td><td><a href="https://github.com/hubooooooo/agent-workshop/releases/latest">下载</a>（和网页版同一个包）</td></tr>
 </table>
 
 教学版、网页版、桌面版都下载到自己电脑上运行，不是网站；AI 技能版装进你正在用的 AI 工具里，不用下载整个项目。教学版由 AI 在终端里运行命令，用法看[教学版的 README](https://github.com/hubooooooo/agent-workshop/blob/v1-maint/README.md)「课堂上这样用」；网页版双击 `启动界面.command`，桌面版双击同一个文件夹里的 `Agent 工坊.app`，第一次双击如果被 macOS 拦下，看[常见问题](#常见问题)。
@@ -142,7 +142,7 @@ claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
 5. 在「试玩」里扮演自己产品的使用者（比如来问面包的顾客）和它聊几句，看它按现在的方案会怎么回应。它会按方案里的工具清单一步步做事，每做一步就多一张卡片；查资料、通知店主这些工具不会真的执行，结果是模拟的。方案里要先问人的操作会停下来等确认，禁止的操作调不了，这些地方都单独标出来。哪里不对就点回复下面的「这里不对」记下，最后一起带去「加新需求」。
 6. 点「导出交接包」，把 zip 发给帮你做产品的开发者：里面有需求、方案、还没定下来的问题、第一版组件的参考代码，以及一段交给 AI 编程工具的提示词。
 7. 有了新想法，在「加新需求」里说一句，AI 最多再问一个问题，整理成草稿给你确认；确认后需求文档升一版、方案重新推导，自动跳到「版本历史」，告诉你哪些组件的选型变了。每一版的需求文档都能回看。
-8. 手上已经有一个 Agent 项目，点左栏「检查一个项目」，选它的文件夹（会弹出 Mac 自带的选文件夹窗口，也可以粘贴路径），几分钟后得到差距报告和一份它本该有的需求文档，结果列在左栏「检查过的项目」里。代码改过后点「重新检查」再查一次：「这个项目该有什么」沿用上次的判断，两次的差别只来自代码；项目定位变了再点「重新判断」。
+8. 手上已经有一个 Agent 项目，点左栏「项目检查」，再点「检查一个项目」，选它的文件夹（会弹出 Mac 自带的选文件夹窗口，也可以粘贴路径），几分钟后得到差距报告和一份它本该有的需求文档，检查过的项目列在这一页的左边。代码改过后点「重新检查」再查一次：「这个项目该有什么」沿用上次的判断，两次的差别只来自代码；项目定位变了再点「重新判断」。
 
 <table>
 <tr>
@@ -229,7 +229,7 @@ bash setup.sh                         # 建虚拟环境、装依赖，把 .env.e
 
 ### 🖥 桌面版（Mac，预览）
 
-网页版界面的 macOS 原生重画，后台拉起同一个引擎，和网页版共用 `out/`，在哪边建的产品另一边都看得到。功能和网页版一致：概览、回答问题、试玩、加新需求、方案、版本历史、检查项目、模型设置都有，页面结构也一样。对话会存在这台电脑上，关掉再打开还能接着来。和网页版唯一的不同是界面固定浅色。
+网页版界面的 macOS 原生重画，后台拉起同一个引擎，和网页版共用 `out/`，在哪边建的产品另一边都看得到。功能和网页版一致：概览、回答问题、试玩、加新需求、方案、版本历史、检查项目、模型设置都有，页面结构也一样。界面和网页版一模一样（颜色、字体、布局都相同，只有浅色）。对话存在产品文件夹里，两边共用：网页版聊到一半，打开桌面版能接着聊，反过来也一样。
 
 它就在网页版的安装包里：解压后双击文件夹里的 **`Agent 工坊.app`**（不用另装什么；第一次打开会自己准备 Python 环境，左下角显示进度，大约 1 分钟）。应用要留在解压出来的文件夹里用，别单独拖进「应用程序」。没有经过苹果签名，第一次打开会被拦下，放行步骤见[常见问题](#常见问题)。自己从源码打包见[桌面版说明](https://github.com/hubooooooo/agent-workshop/blob/main/desktop/README.md)。
 
