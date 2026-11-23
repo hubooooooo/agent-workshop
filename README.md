@@ -136,13 +136,15 @@ claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
 **浏览器界面（推荐给不用终端的人）**：双击 **`启动界面.command`**，浏览器会自动打开引擎界面。第一次双击如果提示「无法打开」，按[常见问题](#常见问题)里的步骤放行一次即可。
 
 1. 「模型设置」里选服务商、粘贴 API Key，点「测试连接并保存」。
-2. 「新建产品」像聊天一样说出想法，AI 追问给谁用、怎么用、什么不能做，信息够了就停（想法说完整了就不再问，只说一句话的一般问三个左右），整理成需求草稿给你确认。确认后开始推导，进度直接显示在对话里。
+2. 「新建产品」像聊天一样说出想法，AI 追问给谁用、怎么用、什么不能做，信息够了就停（想法说完整了就不再问，只说一句话的一般问三个左右），整理成需求草稿给你确认（产品名和需求都能直接改）。确认后开始推导，页面自动跳到这个产品，在概览上看进度。
 3. 推导完在产品页看方案：组件选型及理由、七层架构、工具清单、系统提示词、测试设计、审稿意见。
 4. 方案里还没想清楚的问题，在「回答问题」里一题一题答。问题都改成了大白话，只有工程师能判断的技术备注单独放着，不用你答；拿不准的点「帮我想想」，AI 给几个方向。答完自动写进 PRD 并重新推导。
 5. 在「试玩」里扮演自己产品的使用者（比如来问面包的顾客）和它聊几句，看它按现在的方案会怎么回应。它会按方案里的工具清单一步步做事，每做一步就多一张卡片；查资料、通知店主这些工具不会真的执行，结果是模拟的。方案里要先问人的操作会停下来等确认，禁止的操作调不了，这些地方都单独标出来。哪里不对就点回复下面的「这里不对」记下，最后一起带去「加新需求」。
 6. 点「导出交接包」，把 zip 发给帮你做产品的开发者：里面有需求、方案、还没定下来的问题、第一版组件的参考代码，以及一段交给 AI 编程工具的提示词。
 7. 有了新想法，在「加新需求」里说一句，AI 最多再问一个问题，整理成草稿给你确认；确认后需求文档升一版、方案重新推导，自动跳到「版本历史」，告诉你哪些组件的选型变了。每一版的需求文档都能回看。
 8. 手上已经有一个 Agent 项目，点左栏「项目检查」，再点「检查一个项目」，选它的文件夹（会弹出 Mac 自带的选文件夹窗口，也可以粘贴路径），几分钟后得到差距报告和一份它本该有的需求文档，检查过的项目列在这一页的左边。代码改过后点「重新检查」再查一次：「这个项目该有什么」沿用上次的判断，两次的差别只来自代码；项目定位变了再点「重新判断」。
+
+回答问题、试玩、加新需求这三段对话，以及记下的「这里不对」，都会自动存在产品文件夹里：切走再回来、关掉再打开都能接着聊，网页版和桌面版也共用同一份。AI 回复时可以点输入框右下角的「停止」，已经出来的内容会留着；对话顶上的「重新开始」会先确认一次再清空。
 
 <table>
 <tr>
@@ -240,7 +242,7 @@ bash setup.sh                         # 建虚拟环境、装依赖，把 .env.e
 </tr>
 <tr>
 <td align="center">产品概览：和网页版一样的分组导航</td>
-<td align="center">试玩：工具卡片、「这里不对」</td>
+<td align="center">试玩：接着网页版的同一段对话</td>
 </tr>
 </table>
 
@@ -323,6 +325,7 @@ agent 需要模型支持工具调用。DeepSeek 实测支持（Anthropic 格式�
 <tr><td><code>skeleton/</code></td><td>代码骨架，唯一允许写产品代码的地方</td><td><strong>你的 AI 编程工具</strong>，引擎不写</td></tr>
 <tr><td><code>verify/</code></td><td>按方案的组件选型和 PRD 检查骨架的差距报告</td><td>引擎</td></tr>
 <tr><td><code>迭代记录.md</code></td><td>每一轮：新需求、选型变化、骨架待办、人工验证结论</td><td>引擎记录；人工验证结论只能由你填</td></tr>
+<tr><td><code>.conversations.json</code></td><td>界面里还没聊完的对话（回答问题、试玩、加新需求）和「这里不对」的记录，网页版和桌面版共用；对话确认完成或重新开始就删掉，导出交接包时不会带上</td><td>网页版、桌面版自动保存</td></tr>
 </table>
 
 引擎不负责部署上线和上线后的运行。
@@ -391,7 +394,7 @@ macOS 14 及更早的版本更简单：按住 Control 键点启动文件（或 `
 <tr><th align="left" width="24%"><img src="docs/images/spacer.png" width="2000" height="1" align="left" alt="">位置</th><th align="left" width="76%">用途</th></tr>
 <tr><td><a href="使用引导.md">使用引导.md</a></td><td>用户入口：任务模板、产品循环、给 AI 的执行规则</td></tr>
 <tr><td><a href="BLUEPRINT.md">BLUEPRINT.md</a></td><td>五步推导、五要素、七层架构与组件选型表</td></tr>
-<tr><td><a href="blueprint/">blueprint/</a></td><td>引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区；<code>agent.py</code> 是 agent 循环，<code>intake_agent.py</code>、<code>plan_agent.py</code>、<code>audit_agent.py</code> 分别是追问、方案推导、检查用的 agent；<code>web/</code> 是浏览器界面的服务端，<code>chat.py</code> 是界面里的几段对话，<code>playground.py</code> 是「试玩」</td></tr>
+<tr><td><a href="blueprint/">blueprint/</a></td><td>引擎：需求拆解、规则选型、方案渲染、源码扫描、产品工作区；<code>agent.py</code> 是 agent 循环，<code>intake_agent.py</code>、<code>plan_agent.py</code>、<code>audit_agent.py</code> 分别是追问、方案推导、检查用的 agent；<code>web/</code> 是浏览器界面的服务端（<code>conversations.py</code> 存界面里的对话，网页版和桌面版共用），<code>chat.py</code> 是界面里的几段对话，<code>playground.py</code> 是「试玩」</td></tr>
 <tr><td><a href="https://github.com/hubooooooo/agent-workshop/tree/main/web">web/</a></td><td>浏览器界面源码（React + assistant-ui），构建产物提交在 <code>blueprint/web/static/</code></td></tr>
 <tr><td><code>s01</code>–<code>s17</code></td><td>17 个组件的说明、参考实现与图示</td></tr>
 <tr><td><a href="common/">common/</a></td><td>组件参考实现共用的启动层</td></tr>
