@@ -237,10 +237,6 @@ const ThreadRoot: FC<{ autoFocus: boolean }> = ({ autoFocus }) => {
             <ThreadPrimitive.Messages>
               {() => <ThreadMessage />}
             </ThreadPrimitive.Messages>
-            {/* 快捷回复跟在最后一条回复下面（和桌面版一样），不放在输入框上方 */}
-            <AuiIf condition={(s) => !isFinished(s)}>
-              <ThreadFollowupSuggestions />
-            </AuiIf>
           </div>
 
           <ThreadPrimitive.ViewportFooter
@@ -446,7 +442,7 @@ const ThreadScrollToBottom: FC = () => {
 const ThreadWelcome: FC = () => {
   return (
     <div className="aui-thread-welcome-root mb-6 flex flex-col px-2">
-      <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-2xl font-medium tracking-tight duration-200">
+      <p className="aui-thread-welcome-message-inner fill-mode-both text-2xl font-medium tracking-tight duration-200">
         说说你的想法
       </p>
     </div>
@@ -564,7 +560,7 @@ const AssistantMessage: FC = () => {
     <MessagePrimitive.Root
       data-slot="aui_assistant-message-root"
       data-role="assistant"
-      className="fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
+      className="relative -mb-7.5 pb-7.5 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto]"
     >
       <div
         data-slot="aui_assistant-message-content"
@@ -659,6 +655,12 @@ const AssistantMessage: FC = () => {
           <AssistantActionBar />
         </AuiIf>
       </div>
+      {/* 快捷回复紧跟在最后一条回复下面（和桌面版一样），不放在输入框上方 */}
+      <AuiIf condition={(s) => s.message.isLast && !isFinished(s)}>
+        <div className="pt-2.5">
+          <ThreadFollowupSuggestions />
+        </div>
+      </AuiIf>
     </MessagePrimitive.Root>
   );
 };
@@ -711,7 +713,7 @@ const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
-      className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
+      className="grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
       data-role="user"
     >
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
