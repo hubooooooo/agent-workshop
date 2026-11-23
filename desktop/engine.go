@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -360,9 +361,10 @@ type ChatEvent struct {
 
 // streamChat 走引擎的流式对话接口，每收到一个事件调一次 onEvent。
 // messages 是完整历史（含刚发的这条），引擎自己拼上下文。
-func streamChat(base, path string, messages []ChatMsg, onEvent func(ChatEvent)) error {
+// ctx 取消（用户点了「停止」）就断开连接，引擎那边随即停下。
+func streamChat(ctx context.Context, base, path string, messages []ChatMsg, onEvent func(ChatEvent)) error {
 	raw, _ := json.Marshal(map[string]any{"messages": messages})
-	req, err := http.NewRequest(http.MethodPost, base+path, strings.NewReader(string(raw)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+path, strings.NewReader(string(raw)))
 	if err != nil {
 		return err
 	}

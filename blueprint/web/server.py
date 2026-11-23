@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from blueprint import chat, playground, providers
 from blueprint.usage import record_usage
+from blueprint.web import conversations
 from blueprint.web.audits import audit_detail, audit_dir_for, list_audits, project_root, resolve_audit
 from blueprint.web.jobs import JobManager, friendly_error
 from blueprint.web.views import list_products, product_detail, resolve_workspace
@@ -543,6 +544,9 @@ def make_handler(app: App):
                 m = re.fullmatch(r"/api/products/([^/]+)/history", path)
                 if m:
                     return self._json(app.history(unquote(m.group(1))))
+                m = re.fullmatch(r"/api/products/([^/]+)/conversations", path)
+                if m:
+                    return self._json(conversations.load(resolve_workspace(app.out_root, unquote(m.group(1)))))
                 m = re.fullmatch(r"/api/products/([^/]+)/prd", path)
                 if m:
                     v = parse_qs(url.query).get("v", [""])[0]
@@ -591,6 +595,10 @@ def make_handler(app: App):
                         return self._json({"job": app.rerun_audit(slug, body).to_dict()})
                     app.reveal_audit(slug)
                     return self._json({"ok": True})
+                m = re.fullmatch(r"/api/products/([^/]+)/conversations/([a-z]+)", path)
+                if m:
+                    ws = resolve_workspace(app.out_root, unquote(m.group(1)))
+                    return self._json(conversations.save(ws, m.group(2), body))
                 m = re.fullmatch(r"/api/products/([^/]+)/(plan|reveal|chat|answers|revise-chat|revise|play|play-intro)", path)
                 if m:
                     slug, action = unquote(m.group(1)), m.group(2)

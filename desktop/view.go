@@ -268,6 +268,7 @@ func newProductView(c *ui.Context) {
 		if text := chatComposer(c, inputGen, &draft, composerProps{
 			Placeholder: "描述你想做的 AI 产品，比如：帮社区面包店回复顾客微信的 AI 客服",
 			Busy:        streaming, BusyText: "引擎正在思考…",
+			OnStop: func() { go app.stopIntake() },
 		}); text != "" {
 			draft = ""
 			send(text)

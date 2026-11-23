@@ -43,6 +43,7 @@ func root(c *ui.Context) {
 			content(c)
 		})
 	})
+	restartConfirm(c)
 	drainToasts(c)
 	feedback.ToastHost(c, feedback.ToastHostProps{})
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -27,7 +28,8 @@ type chatSession struct {
 	StartedAs string    // 确认后卡片的标题
 	Draft     string
 	InputGen  int
-	gen       int // 重新开始就 +1：旧的流式回复对不上号就丢掉
+	gen       int    // 重新开始就 +1：旧的流式回复对不上号就丢掉
+	cancel    func() // 正在回复：点「停止」时调
 
 	// 卡片里可以改的内容
 	Answers     []qaPair
@@ -78,6 +80,9 @@ func (s *AppState) chatFor(key, prefix, intro string, chips []string) *chatSessi
 		}
 	}
 	cs := &chatSession{Intro: intro, OpenChips: chips}
+	if w := s.pendingSession(key); w != nil { // 存在引擎里的上次的对话：接着聊
+		cs = sessionFromWire(w, intro, chips)
+	}
 	s.chats[key] = cs
 	return cs
 }
@@ -98,10 +103,13 @@ func (s *AppState) chatSend(key, endpoint, text string) {
 	gen := cs.gen
 	history := append([]ChatMsg{{Role: "assistant", Text: cs.Intro}}, cs.Msgs...)
 	base := s.engineURL
+	ctx, cancel := context.WithCancel(context.Background())
+	cs.cancel = cancel
 	s.mu.Unlock()
 	s.invalidate()
+	defer cancel()
 
-	err := streamChat(base, endpoint, history, func(ev ChatEvent) {
+	err := streamChat(ctx, base, endpoint, history, func(ev ChatEvent) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if s.chats[key] != cs || cs.gen != gen {
@@ -127,7 +135,8 @@ func (s *AppState) chatSend(key, endpoint, text string) {
 	if s.chats[key] == cs && cs.gen == gen {
 		cs.Streaming = false
 		cs.replied = true
-		if err != nil && cs.Err == "" {
+		cs.cancel = nil
+		if err != nil && cs.Err == "" && ctx.Err() == nil { // 自己点了「停止」不算出错
 			cs.Err = err.Error()
 		}
 		if cs.Card != nil {
@@ -136,7 +145,20 @@ func (s *AppState) chatSend(key, endpoint, text string) {
 	}
 	s.mu.Unlock()
 	s.invalidate()
-	s.saveProduct(slugOfChatKey(key))
+	s.saveChat(key)
+}
+
+// chatStop 回复进行中点「停止」：断开这条流，已经出来的部分留着。
+func (s *AppState) chatStop(key string) {
+	s.mu.Lock()
+	var cancel func()
+	if cs := s.chats[key]; cs != nil {
+		cancel = cs.cancel
+	}
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // fillCard 把卡片的参数复制成可以改的字段。
@@ -199,7 +221,7 @@ func (s *AppState) chatRestart(key string) {
 	}
 	s.mu.Unlock()
 	s.invalidate()
-	go s.saveProduct(slugOfChatKey(key))
+	go s.saveChat(key)
 }
 
 // confirmAnswers 「保存并重新推导方案」：回答写进需求文档，启动推导任务。
@@ -216,7 +238,7 @@ func (s *AppState) confirmAnswers(key, slug string) {
 	s.mu.Unlock()
 	s.invalidate()
 	data, err := postJSONData(base, "/api/products/"+url.PathEscape(slug)+"/answers", string(body))
-	s.finishCard(cs, slug, data, err, "回答已写进需求文档")
+	s.finishCard(key, cs, slug, data, err, "回答已写进需求文档")
 }
 
 // confirmRevision 「升到 Vn 并重新推导」：需求文档升一版，按新需求重新推导。
@@ -244,10 +266,10 @@ func (s *AppState) confirmRevision(key, slug string, next int) {
 	if title != "" {
 		label += "：" + title
 	}
-	s.finishCard(cs, slug, data, err, label)
+	s.finishCard(key, cs, slug, data, err, label)
 }
 
-func (s *AppState) finishCard(cs *chatSession, slug string, data map[string]any, err error, label string) {
+func (s *AppState) finishCard(key string, cs *chatSession, slug string, data map[string]any, err error, label string) {
 	s.mu.Lock()
 	cs.CardBusy = false
 	if err != nil {
@@ -263,22 +285,22 @@ func (s *AppState) finishCard(cs *chatSession, slug string, data map[string]any,
 		}
 	}
 	s.mu.Unlock()
-	go s.saveProduct(slug) // 确认过的对话不再留
-	s.fetchDetail(slug)    // 拿到正在跑的任务，接着轮询进度
+	go s.saveChat(key)  // 确认过的对话不再留
+	s.fetchDetail(slug) // 拿到正在跑的任务，接着轮询进度
 }
 
 // -- 试玩里的「这里不对」 ------------------------------------------------------
 
 // playNote 一条「这里不对」：我说了什么、它回了什么、我希望怎样。
 type playNote struct {
-	ID      int
+	ID      string
 	Said    string
 	Reply   string
 	Comment string
 }
 
 // saveNote 记下（或改写）某条回复下的批注。
-func (s *AppState) saveNote(slug string, msgID int, comment string) {
+func (s *AppState) saveNote(slug, msgID, comment string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	comment = strings.TrimSpace(comment)
@@ -304,12 +326,12 @@ func (s *AppState) saveNote(slug string, msgID int, comment string) {
 		}
 	}
 	s.notes[slug] = append(notes, playNote{ID: msgID, Said: said, Reply: reply, Comment: comment})
-	s.noteOpen, s.noteDraft = 0, ""
+	s.noteOpen, s.noteDraft = "", ""
 	s.invalidate()
-	go s.saveProduct(slug)
+	go s.saveNotes(slug)
 }
 
-func (s *AppState) removeNote(slug string, msgID int) {
+func (s *AppState) removeNote(slug, msgID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	notes := s.notes[slug][:0:0]
@@ -320,7 +342,7 @@ func (s *AppState) removeNote(slug string, msgID int) {
 	}
 	s.notes[slug] = notes
 	s.invalidate()
-	go s.saveProduct(slug)
+	go s.saveNotes(slug)
 }
 
 // carryNotes 「带去加新需求 →」：把记下的几处整理成一段草稿，放进加新需求的输入框。
@@ -339,7 +361,7 @@ func (s *AppState) carryNotes(slug string) {
 	delete(s.notes, slug)
 	s.productTab = "revise"
 	s.invalidate()
-	go s.saveProduct(slug)
+	go s.saveNotes(slug)
 }
 
 // playEditResend 试玩里「修改」后重新发送：这句及之后的动作和回复丢掉，改过的话重新发。
@@ -398,10 +420,9 @@ func (s *AppState) restartPlay(slug string) {
 	s.playStarted, s.playIntro, s.playMessages, s.playErr, s.playDraft = false, "", nil, "", ""
 	s.playInputGen++
 	s.playGen++
-	s.noteOpen = 0
-	delete(s.playSaved, slug)
+	s.noteOpen = ""
 	s.mu.Unlock()
-	s.saveProduct(slug)
+	s.savePlay(slug) // 对话空了：引擎那边也删掉
 	s.startPlay(slug)
 }
 
