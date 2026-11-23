@@ -206,11 +206,13 @@ func stepCard(c *ui.Context, step map[string]string) {
 			ui.Text(c, "模拟调用工具").FontSize(13).TextColor(tk.TextSecondary)
 			ui.Text(c, step["tool"]).Font("monospace").FontSize(13).FontWeight(600)
 		})
+		// 换行和多余空白并成一个空格（和网页版一样，参数是 JSON 时不会拉成一长串）
+		oneLine := func(v string) string { return strings.Join(strings.Fields(v), " ") }
 		if step["input"] != "" {
-			ui.Text(c, "输入："+step["input"]).FontSize(13).TextColor(tk.TextSecondary)
+			ui.Text(c, "输入："+oneLine(step["input"])).FontSize(13).TextColor(tk.TextSecondary)
 		}
 		if step["result"] != "" {
-			ui.Text(c, "结果（编的）："+step["result"]).FontSize(13).TextColor(tk.TextSecondary)
+			ui.Text(c, "结果（编的）："+oneLine(step["result"])).FontSize(13).TextColor(tk.TextSecondary)
 		}
 	})
 }

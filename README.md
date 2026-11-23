@@ -146,7 +146,7 @@ claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/web-overview.png" alt="产品页概览：左栏是产品和检查过的项目，中间是产品定位、审稿分数和待确认问题，右边是组件选型统计和导出交接包"></td>
+<td width="50%"><img src="docs/images/web-overview.png" alt="产品页概览：左栏是导航和我的产品，中间是产品定位、审稿分数和待确认问题，右边是组件选型统计和导出交接包"></td>
 <td width="50%"><img src="docs/images/web-answers.png" alt="回答问题：一题一题答，点「帮我想想」后 AI 给出 A、B、C 三个方向"></td>
 </tr>
 <tr>
@@ -154,12 +154,12 @@ claude plugin install agent-workshop --marketplace hubooooooo/agent-workshop
 <td align="center">回答问题：拿不准就点「帮我想想」</td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/images/web-play.png" alt="试玩：扮演家长发一句话，AI 按方案模拟调用识别照片的工具，卡片上标明结果是编的"></td>
-<td width="50%"><img src="docs/images/web-audit.png" alt="检查一个项目：差距报告开头写明判定、缺失和薄弱的组件数、agent 读了几个文件"></td>
+<td width="50%"><img src="docs/images/web-play.png" alt="试玩：扮演家长说要演救援剧情，AI 按方案模拟调用查资料、写剧本、审内容的工具，卡片上标明结果是编的"></td>
+<td width="50%"><img src="docs/images/web-audit.png" alt="项目检查：左边是检查过的项目，右边是报告，摘要卡写明判定、缺失和薄弱的组件数、agent 读了几个文件"></td>
 </tr>
 <tr>
 <td align="center">试玩：每调一个工具多一张卡片，结果是模拟的</td>
-<td align="center">检查一个项目：差距报告和本该有的需求文档</td>
+<td align="center">项目检查：差距报告和本该有的需求文档</td>
 </tr>
 </table>
 
@@ -236,7 +236,7 @@ bash setup.sh                         # 建虚拟环境、装依赖，把 .env.e
 <table>
 <tr>
 <td width="50%"><img src="docs/images/desktop-overview.png" alt="桌面版产品概览：左边分组导航（概览、对话、方案、记录）和用量，中间是产品定位和待确认问题，右边是组件选型统计和交接包"></td>
-<td width="50%"><img src="docs/images/desktop-play.png" alt="桌面版试玩：开场白、用户的一句话、两张模拟调用工具的卡片和 AI 的回应，回复下面有「这里不对」"></td>
+<td width="50%"><img src="docs/images/desktop-play.png" alt="桌面版试玩：接着网页版的同一段对话，四张模拟调用工具的卡片和 AI 给出的剧本"></td>
 </tr>
 <tr>
 <td align="center">产品概览：和网页版一样的分组导航</td>
