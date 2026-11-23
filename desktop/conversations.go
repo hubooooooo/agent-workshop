@@ -72,7 +72,7 @@ func chipRow(c *ui.Context, chips []string, send func(string)) {
 func sessionView(c *ui.Context, key, endpoint, hint, placeholder string, cs chatSession, top func(), cardView func()) {
 	tk := theme.TokensOf(c)
 	send := func(text string) { go app.chatSend(key, endpoint, text) }
-	chatStrip(c, hint, !cs.Streaming && cs.hasUser() && !cs.Finished, func() { go app.chatRestart(key) })
+	chatStrip(c, hint, !cs.Streaming && cs.hasUser() && !cs.Finished, func() { app.askRestart(func() { app.chatRestart(key) }) })
 	if top != nil {
 		top()
 	}
@@ -111,6 +111,7 @@ func sessionView(c *ui.Context, key, endpoint, hint, placeholder string, cs chat
 	draft := cs.Draft
 	if text := chatComposer(c, cs.InputGen, &draft, composerProps{
 		Placeholder: placeholder, Busy: cs.Streaming, BusyText: "正在回复…",
+		OnStop: func() { go app.chatStop(key) },
 	}); text != "" {
 		send(text)
 		return
@@ -364,7 +365,7 @@ func playPanel(c *ui.Context, slug string) {
 		}
 	}
 	chatStrip(c, "这是按方案模拟的，不是做出来的产品：工具结果都是编的，真正的产品要开发者按交接包来做。",
-		!streaming && hasUser, func() { go app.restartPlay(slug) })
+		!streaming && hasUser, func() { app.askRestart(func() { app.restartPlay(slug) }) })
 	if len(notes) > 0 {
 		ui.Row(c).Shrink(0).Padding(8, 20).Gap(12).AlignItems(ui.Center).Background(tk.WarningBg).
 			BorderWidth(0, 0, 1, 0).BorderColor(tk.BorderSecondary).Children(func() {
@@ -400,6 +401,7 @@ func playPanel(c *ui.Context, slug string) {
 	})
 	if text := chatComposer(c, inputGen, &draft, composerProps{
 		Placeholder: fmt.Sprintf("以「%s」的身份说点什么…", role), Busy: streaming, BusyText: "Agent 正在按方案跑工具…",
+		OnStop: func() { go app.stopPlay() },
 	}); text != "" {
 		draft = ""
 		app.mu.Lock()
@@ -480,17 +482,17 @@ func replyActions(c *ui.Context, text string, last bool, regenerate func()) {
 	})
 }
 
-func lastAssistantID(msgs []PlayMsg) int {
+func lastAssistantID(msgs []PlayMsg) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i].Role == "assistant" {
 			return msgs[i].ID
 		}
 	}
-	return 0
+	return ""
 }
 
 // noteControl 回复下面的「这里不对」：没记过是一个按钮，展开是输入框，记过了显示记下的话。
-func noteControl(c *ui.Context, slug string, id int, notes []playNote, open int, draft string, gen int) {
+func noteControl(c *ui.Context, slug, id string, notes []playNote, open, draft string, gen int) {
 	tk := theme.TokensOf(c)
 	for _, n := range notes {
 		if n.ID == id {
@@ -530,7 +532,7 @@ func noteControl(c *ui.Context, slug string, id int, notes []playNote, open int,
 			}
 			action.Button(c, "取消", action.ButtonProps{Size: theme.Small}).OnClick(func() {
 				app.mu.Lock()
-				app.noteOpen, app.noteDraft = 0, ""
+				app.noteOpen, app.noteDraft = "", ""
 				app.mu.Unlock()
 				app.invalidate()
 			})
@@ -539,6 +541,33 @@ func noteControl(c *ui.Context, slug string, id int, notes []playNote, open int,
 	if text != draft {
 		app.mu.Lock()
 		app.noteDraft = text
+		app.mu.Unlock()
+	}
+}
+
+// askRestart 点「重新开始」先问一句，确定了才清空（和网页版一样）。
+func (s *AppState) askRestart(do func()) {
+	s.mu.Lock()
+	s.restartAsk = do
+	s.mu.Unlock()
+	s.invalidate()
+}
+
+// restartConfirm 「重新开始」的确认框，画在根视图最上层。
+func restartConfirm(c *ui.Context) {
+	app.mu.Lock()
+	do := app.restartAsk
+	app.mu.Unlock()
+	open := do != nil
+	if feedback.Modal(c, &open, feedback.ModalProps{Title: "重新开始", Width: 400, OkText: "确定", CancelText: "取消"}, func() {
+		ui.Text(c, "清空这段对话，从头开始？")
+	}) {
+		open = false
+		go do()
+	}
+	if !open && do != nil {
+		app.mu.Lock()
+		app.restartAsk = nil
 		app.mu.Unlock()
 	}
 }

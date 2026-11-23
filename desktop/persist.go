@@ -1,61 +1,66 @@
 package main
 
 import (
-	"crypto/sha1"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"os"
-	"path/filepath"
+	"fmt"
+	"net/url"
 	"strings"
 )
 
-// 回答问题、加新需求、试玩的对话，以及「这里不对」的记录，存在这台电脑上：关掉应用再打开还能接着来。
-// 和网页版存在浏览器里一样：问题清单变了（重新推导）、版本升了、方案变了，旧的对话就作废；
-// 对话确认完成后删掉。存在应用自己的目录里，不放进产品文件夹，免得跟着交接包发出去。
+// 回答问题、加新需求、试玩的对话，以及「这里不对」的记录，存在引擎里（产品文件夹的 .conversations.json），
+// 和网页版共用：网页版聊到一半，打开桌面版能接着聊，反过来也一样。格式见 blueprint/web/conversations.py。
+// 哪段对话已经旧了（问题清单变了、需求文档升了版、方案变了）由引擎判断，旧的不会返回。
 
-// savedChat 一段对话里要留下来的部分。
-type savedChat struct {
-	Intro       string    `json:"intro"`
-	Msgs        []ChatMsg `json:"msgs"`
-	OpenChips   []string  `json:"open_chips,omitempty"`
-	Chips       []string  `json:"chips,omitempty"`
-	Replied     bool      `json:"replied,omitempty"`
-	Card        *toolCard `json:"card,omitempty"`
-	Answers     []qaPair  `json:"answers,omitempty"`
-	Title       string    `json:"title,omitempty"`
-	Requirement string    `json:"requirement,omitempty"`
+type wirePart struct {
+	Type   string         `json:"type"` // text | data | tool
+	Text   string         `json:"text,omitempty"`
+	Name   string         `json:"name,omitempty"`
+	Data   map[string]any `json:"data,omitempty"`
+	Args   map[string]any `json:"args,omitempty"`
+	Result any            `json:"result,omitempty"`
 }
 
-// savedProduct 一个产品存下来的全部对话。
-type savedProduct struct {
-	Chats   map[string]savedChat `json:"chats,omitempty"`
-	PlayFP  string               `json:"play_fingerprint,omitempty"` // 试玩开场的指纹：方案变了就对不上，不再恢复
-	Play    []PlayMsg            `json:"play,omitempty"`
-	PlaySeq int                  `json:"play_seq,omitempty"`
-	Notes   []playNote           `json:"notes,omitempty"`
+type wireMsg struct {
+	ID    string     `json:"id"`
+	Role  string     `json:"role"`
+	Parts []wirePart `json:"parts"`
 }
 
-func (p savedProduct) empty() bool {
-	return len(p.Chats) == 0 && len(p.Play) == 0 && len(p.Notes) == 0
+type wireSession struct {
+	Messages []wireMsg     `json:"messages"`
+	Chips    []string      `json:"chips,omitempty"`
+	Card     *wireCardEdit `json:"card,omitempty"`
 }
 
-// chatStoreDir 存对话的目录；测试里换成临时目录。
-var chatStoreDir = func() string {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(dir, "Agent 工坊", "chats")
+// wireCardEdit 卡片上改过、还没确认的内容。
+type wireCardEdit struct {
+	Answers     []qaPair `json:"answers,omitempty"`
+	Title       *string  `json:"title,omitempty"`
+	Requirement *string  `json:"requirement,omitempty"`
 }
 
-// storeFile 按产品文件夹的完整路径起文件名：两个仓库里同名的产品不会串。
-func storeFile(productPath string) string {
-	dir := chatStoreDir()
-	if dir == "" || productPath == "" {
-		return ""
-	}
-	sum := sha1.Sum([]byte(productPath))
-	return filepath.Join(dir, hex.EncodeToString(sum[:8])+".json")
+type wireNote struct {
+	ID      string `json:"id"`
+	Said    string `json:"said"`
+	Reply   string `json:"reply"`
+	Comment string `json:"comment"`
+}
+
+// loadedConversations GET /api/products/{slug}/conversations 的结果。
+type loadedConversations struct {
+	Answers *wireSession `json:"answers"`
+	Revise  *wireSession `json:"revise"`
+	Play    *wireSession `json:"play"`
+	Notes   []wireNote   `json:"notes"`
+}
+
+// newID 消息编号：网页版用随机串，这里也用随机串，两边记下的「这里不对」才对得上同一条回复。
+func newID() string {
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	return "d" + hex.EncodeToString(b)
 }
 
 // slugOfChatKey 对话的 key 是「answers:<slug>:<指纹>」「revise:<slug>:v<版本>」。slug 里不会有冒号（见 slugify）。
@@ -67,107 +72,317 @@ func slugOfChatKey(key string) string {
 	return parts[1]
 }
 
-// snapshotProduct 收集这个产品要存的东西。调用方必须已持有 s.mu。
-func (s *AppState) snapshotProduct(slug string) savedProduct {
-	var out savedProduct
-	for key, cs := range s.chats {
-		if slugOfChatKey(key) != slug || cs.Finished || !cs.hasUser() {
-			continue
+func kindOfChatKey(key string) string {
+	return strings.SplitN(key, ":", 2)[0]
+}
+
+// -- 对话 ↔ 存档格式 ------------------------------------------------------------
+
+func sessionToWire(cs *chatSession) *wireSession {
+	out := &wireSession{}
+	for i, m := range cs.Msgs {
+		msg := wireMsg{ID: fmt.Sprintf("m%d", i+1), Role: m.Role}
+		if m.Text != "" {
+			msg.Parts = append(msg.Parts, wirePart{Type: "text", Text: m.Text})
 		}
-		if out.Chats == nil {
-			out.Chats = map[string]savedChat{}
-		}
-		out.Chats[key] = savedChat{
-			Intro: cs.Intro, Msgs: cs.Msgs, OpenChips: cs.OpenChips, Chips: cs.Chips, Replied: cs.replied,
-			Card: cs.Card, Answers: cs.Answers, Title: cs.Title, Requirement: cs.Requirement,
-		}
+		out.Messages = append(out.Messages, msg)
 	}
-	// 试玩的状态只属于当前选中的产品
-	if s.selected == slug && s.playFP != "" && len(s.playMessages) > 0 && !s.playStreaming {
-		out.PlayFP, out.Play, out.PlaySeq = s.playFP, s.playMessages, s.playMsgSeq
-	} else if saved, ok := s.playSaved[slug]; ok {
-		out.PlayFP, out.Play, out.PlaySeq = saved.PlayFP, saved.Play, saved.PlaySeq // 还没打开试玩：留着上次存的
+	if cs.Card != nil {
+		part := wirePart{Type: "tool", Name: cs.Card.Name, Args: cs.Card.Args}
+		if n := len(out.Messages); n > 0 && out.Messages[n-1].Role == "assistant" {
+			out.Messages[n-1].Parts = append(out.Messages[n-1].Parts, part)
+		} else {
+			out.Messages = append(out.Messages, wireMsg{ID: newID(), Role: "assistant", Parts: []wirePart{part}})
+		}
+		switch cs.Card.Name {
+		case "confirm_answers":
+			out.Card = &wireCardEdit{Answers: cs.Answers}
+		case "confirm_revision":
+			out.Card = &wireCardEdit{Title: &cs.Title, Requirement: &cs.Requirement}
+		}
+	} else if cs.replied {
+		out.Chips = cs.Chips
 	}
-	out.Notes = s.notes[slug]
 	return out
 }
 
-// saveProduct 把这个产品的对话写到磁盘；什么都没有就删掉文件。在后台 goroutine 里调。
-func (s *AppState) saveProduct(slug string) {
-	s.mu.Lock()
-	path := storeFile(s.productPaths[slug])
-	snap := s.snapshotProduct(slug)
-	data, err := json.Marshal(snap)
-	s.mu.Unlock()
-	if path == "" || err != nil {
-		return
+// sessionFromWire 读回一段对话。网页版存的一条回复可能有好几段文字、一张卡片，这里并成桌面版的样子。
+func sessionFromWire(w *wireSession, intro string, openChips []string) *chatSession {
+	cs := &chatSession{Intro: intro, OpenChips: openChips, Chips: w.Chips}
+	for i, m := range w.Messages {
+		var text strings.Builder
+		for _, p := range m.Parts {
+			switch p.Type {
+			case "text":
+				text.WriteString(p.Text)
+			case "tool":
+				if i == len(w.Messages)-1 && p.Result == nil {
+					cs.Card = &toolCard{Name: p.Name, Args: p.Args}
+				}
+			}
+		}
+		if m.Role == "assistant" {
+			cs.replied = true
+			if text.Len() == 0 {
+				continue
+			}
+		}
+		cs.Msgs = append(cs.Msgs, ChatMsg{Role: m.Role, Text: text.String()})
 	}
-	s.saveMu.Lock()
-	defer s.saveMu.Unlock()
-	if snap.empty() {
-		_ = os.Remove(path)
-		return
+	if cs.Card != nil {
+		cs.fillCard()
+		if e := w.Card; e != nil {
+			if len(e.Answers) > 0 {
+				cs.Answers = e.Answers
+			}
+			if e.Title != nil {
+				cs.Title = *e.Title
+			}
+			if e.Requirement != nil {
+				cs.Requirement = *e.Requirement
+			}
+		}
+		cs.Chips = nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return
-	}
-	_ = os.Rename(tmp, path)
+	return cs
 }
 
-// restoreProduct 第一次打开这个产品时把存下的对话读回来；内存里已有的（这次打开后新说的）不覆盖。
-// 调用方必须已持有 s.mu。
-func (s *AppState) restoreProduct(slug string) {
-	if s.restored[slug] {
+// playToWire 试玩：桌面版把模拟的每一步单独存一行，存档格式里一轮回复是一条消息（步骤 + 文字 + 「这里不对」）。
+func playToWire(msgs []PlayMsg) *wireSession {
+	out := &wireSession{}
+	var cur *wireMsg
+	flush := func() {
+		if cur != nil {
+			if cur.ID == "" {
+				cur.ID = newID()
+			}
+			out.Messages = append(out.Messages, *cur)
+			cur = nil
+		}
+	}
+	for _, m := range msgs {
+		switch m.Role {
+		case "user":
+			flush()
+			out.Messages = append(out.Messages, wireMsg{ID: newID(), Role: "user", Parts: []wirePart{{Type: "text", Text: m.Text}}})
+		case "step":
+			if cur == nil {
+				cur = &wireMsg{Role: "assistant"}
+			}
+			data := map[string]any{}
+			for k, v := range m.Step {
+				data[k] = v
+			}
+			cur.Parts = append(cur.Parts, wirePart{Type: "data", Name: "play_step", Data: data})
+		default:
+			if cur == nil {
+				cur = &wireMsg{Role: "assistant"}
+			}
+			cur.ID = m.ID
+			if m.Text != "" {
+				cur.Parts = append(cur.Parts, wirePart{Type: "text", Text: m.Text})
+			}
+			if m.Feedback {
+				cur.Parts = append(cur.Parts, wirePart{Type: "data", Name: "play_feedback", Data: map[string]any{}})
+			}
+			flush()
+		}
+	}
+	flush()
+	return out
+}
+
+func playFromWire(w *wireSession) []PlayMsg {
+	var out []PlayMsg
+	for _, m := range w.Messages {
+		if m.Role == "user" {
+			var text strings.Builder
+			for _, p := range m.Parts {
+				if p.Type == "text" {
+					text.WriteString(p.Text)
+				}
+			}
+			out = append(out, PlayMsg{Role: "user", Text: text.String()})
+			continue
+		}
+		reply := PlayMsg{Role: "assistant", ID: m.ID}
+		var text strings.Builder
+		for _, p := range m.Parts {
+			switch {
+			case p.Type == "data" && p.Name == "play_step":
+				step := map[string]string{}
+				for k, v := range p.Data {
+					if s, ok := v.(string); ok {
+						step[k] = s
+					}
+				}
+				out = append(out, PlayMsg{Role: "step", Step: step})
+			case p.Type == "data" && p.Name == "play_feedback":
+				reply.Feedback = true
+			case p.Type == "text":
+				text.WriteString(p.Text)
+			}
+		}
+		reply.Text = text.String()
+		if reply.ID == "" {
+			reply.ID = newID()
+		}
+		out = append(out, reply)
+	}
+	return out
+}
+
+func notesToWire(notes []playNote) []wireNote {
+	out := make([]wireNote, 0, len(notes))
+	for _, n := range notes {
+		out = append(out, wireNote{ID: n.ID, Said: n.Said, Reply: n.Reply, Comment: n.Comment})
+	}
+	return out
+}
+
+func notesFromWire(notes []wireNote) []playNote {
+	out := make([]playNote, 0, len(notes))
+	for _, n := range notes {
+		out = append(out, playNote{ID: n.ID, Said: n.Said, Reply: n.Reply, Comment: n.Comment})
+	}
+	return out
+}
+
+// -- 读写 ------------------------------------------------------------------------
+
+func (s *AppState) postConversation(slug, kind string, body any) {
+	s.mu.Lock()
+	base := s.engineURL
+	s.mu.Unlock()
+	if base == "" || slug == "" {
 		return
 	}
-	s.restored[slug] = true
-	path := storeFile(s.productPaths[slug])
-	if path == "" {
-		return
-	}
-	raw, err := os.ReadFile(path)
+	raw, err := json.Marshal(body)
 	if err != nil {
 		return
 	}
-	var saved savedProduct
-	if json.Unmarshal(raw, &saved) != nil {
+	_, _ = postJSONData(base, "/api/products/"+url.PathEscape(slug)+"/conversations/"+kind, string(raw))
+}
+
+// saveChat 存（或删掉）回答问题 / 加新需求这段对话。没说过话、已经确认完成的不留。
+func (s *AppState) saveChat(key string) {
+	slug, kind := slugOfChatKey(key), kindOfChatKey(key)
+	s.mu.Lock()
+	var session *wireSession
+	if cs := s.chats[key]; cs != nil && !cs.Finished && cs.hasUser() {
+		session = sessionToWire(cs)
+	}
+	s.mu.Unlock()
+	s.postConversation(slug, kind, map[string]any{"session": session})
+}
+
+// savePlay 存试玩。试玩的状态只属于当前打开的产品。
+func (s *AppState) savePlay(slug string) {
+	s.mu.Lock()
+	if s.selected != slug || s.playStreaming {
+		s.mu.Unlock()
 		return
 	}
-	for key, c := range saved.Chats {
-		if slugOfChatKey(key) != slug {
+	var session *wireSession
+	if len(s.playMessages) > 0 {
+		session = playToWire(s.playMessages)
+	}
+	s.mu.Unlock()
+	s.postConversation(slug, "play", map[string]any{"session": session})
+}
+
+func (s *AppState) saveNotes(slug string) {
+	s.mu.Lock()
+	notes := notesToWire(s.notes[slug])
+	s.mu.Unlock()
+	s.postConversation(slug, "notes", map[string]any{"notes": notes})
+}
+
+// loadConversations 打开产品时读回存下的对话（每次打开应用只读一次；之后以界面上的为准）。
+func (s *AppState) loadConversations(slug string) {
+	s.mu.Lock()
+	if s.restored[slug] {
+		s.mu.Unlock()
+		return
+	}
+	s.restored[slug] = true
+	base := s.engineURL
+	s.mu.Unlock()
+	data, err := apiGet(base, "/api/products/"+url.PathEscape(slug)+"/conversations")
+	var got loadedConversations
+	if err == nil {
+		raw, _ := json.Marshal(data)
+		err = json.Unmarshal(raw, &got)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err != nil {
+		delete(s.restored, slug) // 下次打开再试
+		return
+	}
+	s.convPending[slug] = &got
+	s.notes[slug] = notesFromWire(got.Notes) // 引擎里的是最新的：每次改都会存过去
+	// 这次打开前建过的对话换成存下的（另一个界面可能接着聊过、或者重新开始了），正在回复的不动
+	for key, cs := range s.chats {
+		if slugOfChatKey(key) != slug || cs.Streaming || cs.CardBusy || cs.Finished {
 			continue
 		}
-		if _, ok := s.chats[key]; ok {
-			continue
+		fresh := &chatSession{Intro: cs.Intro, OpenChips: cs.OpenChips}
+		if w := got.session(kindOfChatKey(key)); w != nil {
+			fresh = sessionFromWire(w, cs.Intro, cs.OpenChips)
+			got.take(kindOfChatKey(key))
 		}
-		cs := &chatSession{
-			Intro: c.Intro, Msgs: c.Msgs, OpenChips: c.OpenChips, Chips: c.Chips, replied: c.Replied,
-			Card: c.Card, Answers: c.Answers, Title: c.Title, Requirement: c.Requirement,
-		}
-		s.chats[key] = cs
+		fresh.Draft, fresh.InputGen, fresh.gen = cs.Draft, cs.InputGen+1, cs.gen+1
+		s.chats[key] = fresh
 	}
-	if len(s.notes[slug]) == 0 && len(saved.Notes) > 0 {
-		s.notes[slug] = saved.Notes
+	if s.selected == slug && s.playIntro != "" {
+		s.resumePlay(slug)
 	}
-	if saved.PlayFP != "" && len(saved.Play) > 0 {
-		s.playSaved[slug] = saved
+	s.invalidate()
+}
+
+func (l *loadedConversations) session(kind string) *wireSession {
+	switch kind {
+	case "answers":
+		return l.Answers
+	case "revise":
+		return l.Revise
+	case "play":
+		return l.Play
+	}
+	return nil
+}
+
+// take 取走一段（只恢复一次）。
+func (l *loadedConversations) take(kind string) {
+	switch kind {
+	case "answers":
+		l.Answers = nil
+	case "revise":
+		l.Revise = nil
+	case "play":
+		l.Play = nil
 	}
 }
 
-// resumePlay 拿到试玩开场后：开场指纹和上次存的一致，就把上次的对话接上。调用方必须已持有 s.mu。
-func (s *AppState) resumePlay(slug, fingerprint string) {
-	saved, ok := s.playSaved[slug]
-	delete(s.playSaved, slug)
-	if !ok || fingerprint == "" || saved.PlayFP != fingerprint || len(s.playMessages) > 0 {
+// pendingSession 新建对话时看看有没有存下的可以接上。调用方必须已持有 s.mu。
+func (s *AppState) pendingSession(key string) *wireSession {
+	p := s.convPending[slugOfChatKey(key)]
+	if p == nil {
+		return nil
+	}
+	w := p.session(kindOfChatKey(key))
+	p.take(kindOfChatKey(key))
+	return w
+}
+
+// resumePlay 试玩开场到了、上次的试玩还在：接着聊。调用方必须已持有 s.mu。
+func (s *AppState) resumePlay(slug string) {
+	p := s.convPending[slug]
+	if p == nil || p.Play == nil || len(s.playMessages) > 0 {
 		return
 	}
-	s.playMessages = saved.Play
-	if saved.PlaySeq > s.playMsgSeq {
-		s.playMsgSeq = saved.PlaySeq
-	}
+	s.playMessages = playFromWire(p.Play)
+	p.Play = nil
 	s.playChips = nil // 已经聊过了，开场的场景不再给
 }

@@ -64,9 +64,9 @@ func TestCarryNotesSeedsRevise(t *testing.T) {
 	s := newState()
 	s.playMessages = []PlayMsg{
 		{Role: "user", Text: "能打折吗"},
-		{Role: "assistant", ID: 7, Text: "我去问问店主", Feedback: true},
+		{Role: "assistant", ID: "m7", Text: "我去问问店主", Feedback: true},
 	}
-	s.saveNote("bakery", 7, "  打折的事直接说做不了  ")
+	s.saveNote("bakery", "m7", "  打折的事直接说做不了  ")
 	if n := s.notes["bakery"]; len(n) != 1 || n[0].Said != "能打折吗" || n[0].Reply != "我去问问店主" || n[0].Comment != "打折的事直接说做不了" {
 		t.Fatalf("note = %+v", n)
 	}

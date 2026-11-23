@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -168,7 +169,7 @@ type JobInfo struct {
 
 // PlayMsg 是试玩页的一行：用户话、Agent 回复或一个模拟动作步骤。
 type PlayMsg struct {
-	ID       int    // assistant 行的编号，「这里不对」的记录靠它对上号
+	ID       string // assistant 行的编号，「这里不对」的记录靠它对上号（和网页版的消息 id 一样是字符串）
 	Role     string // user / assistant / step
 	Text     string
 	Step     map[string]string // step 行的动作卡字段
@@ -244,20 +245,21 @@ type AppState struct {
 
 	// 试玩里记下的「这里不对」，按产品存；重新开始不清空
 	notes      map[string][]playNote
-	noteOpen   int // 正在写批注的回复编号，0 = 没有
+	noteOpen   string // 正在写批注的回复编号，空 = 没有
 	noteDraft  string
 	noteGen    int
 	reviseSeed map[string]string // 带去加新需求的草稿，按产品存
-	playMsgSeq int
-	playFP     string                  // 当前试玩开场的指纹（方案变了就换）
-	playSaved  map[string]savedProduct // 上次存下、还没接上的试玩，按产品存（见 persist.go）
+	playFP     string            // 当前试玩开场的指纹（方案变了就换）
+	playCancel func()            // 正在回复的试玩：点「停止」时调
 
-	// 对话存盘：每个产品文件夹的路径、这次打开后是否已经读回过
-	productPaths map[string]string
-	restored     map[string]bool
-	saveMu       sync.Mutex // 同一时间只写一个文件
-	playChips    []string   // 开场的几个场景，第一次回复前显示
-	playRole     string
+	// 存在引擎里的对话（见 persist.go）：每次打开应用读一次，读回来的先放这里，界面建对话时接上
+	restored    map[string]bool
+	convPending map[string]*loadedConversations
+
+	// 「重新开始」前的确认框
+	restartAsk func()
+	playChips  []string // 开场的几个场景，第一次回复前显示
+	playRole   string
 
 	// 版本历史
 	history    *History
@@ -313,7 +315,8 @@ type AppState struct {
 	chatConfirm   *ConfirmCard
 	chatSuggest   []string
 	chatDraft     string
-	chatInputGen  int // 新建产品输入框已发送的次数
+	chatCancel    func() // 正在回复：点「停止」时调
+	chatInputGen  int    // 新建产品输入框已发送的次数
 
 	// 设置页
 	settings    map[string]any
@@ -331,10 +334,9 @@ func newState() *AppState {
 		chats:      map[string]*chatSession{},
 		notes:      map[string][]playNote{},
 		reviseSeed: map[string]string{},
-		playSaved:  map[string]savedProduct{},
 
-		productPaths: map[string]string{},
-		restored:     map[string]bool{},
+		restored:    map[string]bool{},
+		convPending: map[string]*loadedConversations{},
 	}
 }
 
@@ -385,6 +387,7 @@ func (s *AppState) selectProduct(slug string) {
 	}
 	s.selected = slug
 	s.page = PageProducts
+	delete(s.restored, slug) // 每次打开产品都重读一遍存下的对话：网页版那边可能接着聊过
 	s.prdText, s.prdVer, s.prdErr = "", 0, ""
 	s.plan, s.job, s.planErr = nil, nil, ""
 	s.usage, s.answerIntro, s.productPath, s.planBusy = ProductUsage{}, "", "", false
@@ -392,7 +395,11 @@ func (s *AppState) selectProduct(slug string) {
 	s.loading = true
 	s.playStarted, s.playIntro, s.playMessages, s.playErr, s.playDraft = false, "", nil, "", ""
 	s.playStreaming = false
-	s.playChips, s.playRole, s.noteOpen, s.playFP = nil, "", 0, ""
+	s.playChips, s.playRole, s.noteOpen, s.playFP = nil, "", "", ""
+	if s.playCancel != nil {
+		s.playCancel()
+		s.playCancel = nil
+	}
 	s.playGen++
 	s.history, s.historyErr, s.historyFor = nil, "", ""
 	s.prdDoc, s.prdDocErr, s.prdDocOpen = nil, "", false
@@ -449,9 +456,8 @@ func (s *AppState) fetchDetail(slug string) {
 	}
 	s.answerIntro, _ = data["answer_intro"].(string)
 	s.productPath, _ = data["path"].(string)
-	if s.productPath != "" {
-		s.productPaths[slug] = s.productPath
-		s.restoreProduct(slug) // 第一次打开：把上次存下的对话读回来
+	if !s.restored[slug] {
+		go s.loadConversations(slug) // 第一次打开：把存在引擎里的对话读回来
 	}
 	if v, ok := data["version"].(float64); ok {
 		s.prdVer = int(v)
@@ -645,7 +651,7 @@ func (s *AppState) startPlay(slug string) {
 					}
 				}
 			}
-			s.resumePlay(slug, s.playFP) // 上次没聊完、方案也没变：接着聊
+			s.resumePlay(slug) // 上次没聊完、方案也没变：接着聊
 		}
 		s.invalidate()
 	}()
@@ -669,10 +675,13 @@ func (s *AppState) sendPlay(text string) {
 	gen := s.playGen
 	history := chatFromPlay(s.playMessages) // 在锁里取快照，后台 goroutine 不再碰 s.playMessages
 	base := s.engineURL
+	ctx, cancel := context.WithCancel(context.Background())
+	s.playCancel = cancel
 	s.mu.Unlock()
 	s.invalidate()
 	go func() {
-		err := streamChat(base, "/api/products/"+url.PathEscape(slug)+"/play", history, func(ev ChatEvent) {
+		defer cancel()
+		err := streamChat(ctx, base, "/api/products/"+url.PathEscape(slug)+"/play", history, func(ev ChatEvent) {
 			s.mu.Lock()
 			if s.playGen != gen { // 用户已经换了产品：这条流的事件不再属于当前界面
 				s.mu.Unlock()
@@ -681,8 +690,7 @@ func (s *AppState) sendPlay(text string) {
 			switch ev.Type {
 			case "text":
 				if n := len(s.playMessages); n == 0 || s.playMessages[n-1].Role != "assistant" {
-					s.playMsgSeq++
-					s.playMessages = append(s.playMessages, PlayMsg{Role: "assistant", ID: s.playMsgSeq})
+					s.playMessages = append(s.playMessages, PlayMsg{Role: "assistant", ID: newID()})
 				}
 				s.playMessages[len(s.playMessages)-1].Text += ev.Delta
 			case "data":
@@ -710,13 +718,14 @@ func (s *AppState) sendPlay(text string) {
 		s.mu.Lock()
 		if s.playGen == gen {
 			s.playStreaming = false
-			if err != nil {
+			s.playCancel = nil
+			if err != nil && ctx.Err() == nil { // 自己点了「停止」不算出错，已经出来的部分留着
 				s.playErr = err.Error()
 			}
 		}
 		s.mu.Unlock()
 		s.invalidate()
-		s.saveProduct(slug)
+		s.savePlay(slug)
 	}()
 }
 
@@ -1024,8 +1033,11 @@ func (s *AppState) sendChat(text string) {
 func (s *AppState) streamIntake() {
 	s.mu.Lock()
 	base, history := s.engineURL, append([]ChatMsg(nil), s.chatMessages...) // 锁内取快照，确认建产品时会清空它
+	ctx, cancel := context.WithCancel(context.Background())
+	s.chatCancel = cancel
 	s.mu.Unlock()
-	err := streamChat(base, "/api/chat/intake", history, func(ev ChatEvent) {
+	defer cancel()
+	err := streamChat(ctx, base, "/api/chat/intake", history, func(ev ChatEvent) {
 		s.mu.Lock()
 		switch ev.Type {
 		case "text":
@@ -1050,11 +1062,31 @@ func (s *AppState) streamIntake() {
 	})
 	s.mu.Lock()
 	s.chatStreaming = false
-	if err != nil {
+	s.chatCancel = nil
+	if err != nil && ctx.Err() == nil {
 		s.chatError = err.Error()
 	}
 	s.mu.Unlock()
 	s.invalidate()
+}
+
+// stopPlay / stopIntake 回复进行中点「停止」：断开这条流，已经出来的部分留着（和网页版一样）。
+func (s *AppState) stopPlay() {
+	s.mu.Lock()
+	cancel := s.playCancel
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+func (s *AppState) stopIntake() {
+	s.mu.Lock()
+	cancel := s.chatCancel
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // confirmProduct 用户点了确认卡片：真正创建产品并跳到产品页。

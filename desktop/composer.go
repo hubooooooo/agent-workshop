@@ -18,6 +18,8 @@ type composerProps struct {
 	Busy bool
 	// BusyText 在 Busy 时代替快捷键提示显示在左下角。
 	BusyText string
+	// OnStop 不为空时，Busy 期间发送按钮变成「停止」，点了调它（和网页版一样）。
+	OnStop func()
 }
 
 // chatComposer 是对话页底部的输入框：全宽居中的圆角卡片，文字多了自动增高（最多 8 行），
@@ -55,11 +57,22 @@ func chatComposer(c *ui.Context, gen int, draft *string, p composerProps) string
 					hint = p.BusyText
 				}
 				ui.Text(c, hint).FontSize(12).TextColor(tk.TextTertiary)
+				stop := p.Busy && p.OnStop != nil
 				btn := ui.ButtonBase(c).Width(32).Height(32).Radius(16).AlignItems(ui.Center).Justify(ui.Center).
-					Disabled(!canSend)
+					Disabled(!canSend && !stop)
 				// 点击要在这一帧里读出来：OnClick 的回调在本函数返回之后才跑，改局部变量 send 就丢了。
-				if btn.Clicked() && canSend {
-					send = text
+				if btn.Clicked() {
+					if stop {
+						p.OnStop()
+					} else if canSend {
+						send = text
+					}
+				}
+				if stop {
+					btn.Background(tk.Primary).Cursor(ui.CursorPointer).Children(func() {
+						ui.Icon(c, lucide.Square()).Width(12).Height(12).TextColor(tk.BgContainer)
+					})
+					return
 				}
 				if canSend {
 					btn.Background(tk.Primary).Cursor(ui.CursorPointer)
